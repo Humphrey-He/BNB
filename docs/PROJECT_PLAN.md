@@ -28,14 +28,14 @@
 
 ### Week 1: 基础搭建
 
-- [ ] 初始化 Rust 项目，配置 Cargo.toml 依赖
-- [ ] 实现核心类型：`SignedTransaction`、`Block`、`Header`、`Receipt`、`Account`
-- [ ] 实现基础序列化 (serde)
-- [ ] 实现 hash 和交易 hash
-- [ ] 搭建项目目录结构
-- [ ] 配置 tracing 日志
+- [x] 初始化 Rust 项目，配置 Cargo.toml 依赖
+- [x] 实现核心类型：`SignedTransaction`、`Block`、`Header`、`Receipt`、`Account`
+- [x] 实现基础序列化 (serde)
+- [x] 实现 hash 和交易 hash
+- [x] 搭建项目目录结构
+- [x] 配置 tracing 日志
 
-**交付物**: 基础项目骨架 + 核心类型定义
+**交付物**: 基础项目骨架 + 核心类型定义 ✅
 
 ### Week 2: 签名、状态机与执行器
 
@@ -112,8 +112,11 @@
 
 | 交付物 | 文件路径 | 状态 |
 |--------|----------|------|
-| 项目源码 | `src/` | TODO |
-| 核心类型 | `src/types.rs` | TODO |
+| 项目源码 | `src/` | DONE |
+| 核心类型 | `src/types.rs` | DONE |
+| Crypto 模块 | `src/crypto.rs` | DONE |
+| 错误类型 | `src/error.rs` | DONE |
+| 性能测试 | `benches/bench.rs` | DONE |
 | 状态机 | `src/state.rs` | TODO |
 | 执行器 | `src/executor.rs` | TODO |
 | Mempool | `src/mempool.rs` | TODO |
@@ -121,10 +124,9 @@
 | P2P 模块 | `src/p2p.rs` | TODO |
 | RPC 服务 | `src/rpc.rs` | TODO |
 | 共识模块 | `src/consensus.rs` | TODO |
-| 性能测试 | `src/benches/` | TODO |
 | 协议文档 | `docs/PROTOCOL.md` | TODO |
-| 架构文档 | `ARCHITECTURE.md` | DONE |
-| 项目规划 | `PROJECT_PLAN.md` | DONE |
+| 架构文档 | `docs/ARCHITECTURE.md` | DONE |
+| 项目规划 | `docs/PROJECT_PLAN.md` | DONE |
 
 ## 6. 第一版功能边界 (MVP)
 
