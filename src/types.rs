@@ -22,26 +22,36 @@ pub struct SignedTransaction {
     /// Recipient address (None for contract creation).
     pub to: Option<Address>,
     /// Transfer amount.
-    pub value: u64,
+    pub value: u128,
     /// Transaction nonce for ordering.
     pub nonce: u64,
+    /// Gas limit for this transaction.
+    pub gas_limit: u64,
+    /// Max fee per gas (for EIP-1559 style fee market).
+    pub max_fee_per_gas: u64,
     /// ECDSA signature bytes.
     pub signature: Vec<u8>,
-    /// Cached transaction hash.
-    #[serde(skip)]
-    pub hash: Hash,
 }
 
 impl SignedTransaction {
     /// Create a new signed transaction.
-    pub fn new(from: Address, to: Option<Address>, value: u64, nonce: u64, signature: Vec<u8>) -> Self {
+    pub fn new(
+        from: Address,
+        to: Option<Address>,
+        value: u128,
+        nonce: u64,
+        gas_limit: u64,
+        max_fee_per_gas: u64,
+        signature: Vec<u8>,
+    ) -> Self {
         Self {
             from,
             to,
             value,
             nonce,
+            gas_limit,
+            max_fee_per_gas,
             signature,
-            hash: [0u8; 32],
         }
     }
 }
@@ -58,7 +68,10 @@ pub struct Block {
 impl Block {
     /// Create a new block with header and transactions.
     pub fn new(header: Header, transactions: Vec<SignedTransaction>) -> Self {
-        Self { header, transactions }
+        Self {
+            header,
+            transactions,
+        }
     }
 }
 
@@ -77,14 +90,21 @@ pub struct Header {
     pub timestamp: u64,
     /// Block number (height).
     pub number: u64,
+    /// Gas used in this block.
+    pub gas_used: u64,
+    /// Gas limit for this block.
+    pub gas_limit: u64,
     /// Block nonce for PoA.
     pub nonce: u64,
+    /// Proposer address (validator who produced this block).
+    pub proposer: Address,
     /// Extra data field.
     pub extra: Vec<u8>,
 }
 
 impl Header {
     /// Create a new header.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         parent_hash: Hash,
         state_root: Hash,
@@ -92,7 +112,10 @@ impl Header {
         receipt_root: Hash,
         timestamp: u64,
         number: u64,
+        gas_used: u64,
+        gas_limit: u64,
         nonce: u64,
+        proposer: Address,
         extra: Vec<u8>,
     ) -> Self {
         Self {
@@ -102,7 +125,10 @@ impl Header {
             receipt_root,
             timestamp,
             number,
+            gas_used,
+            gas_limit,
             nonce,
+            proposer,
             extra,
         }
     }

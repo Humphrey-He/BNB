@@ -114,7 +114,7 @@
 |--------|----------|------|
 | 项目源码 | `src/` | DONE |
 | 核心类型 | `src/types.rs` | DONE |
-| Crypto 模块 | `src/crypto.rs` | DONE |
+| Crypto 模块 (hash/merkle) | `src/crypto.rs` | DONE (sig pending) |
 | 错误类型 | `src/error.rs` | DONE |
 | 性能测试 | `benches/bench.rs` | DONE |
 | 状态机 | `src/state.rs` | TODO |
