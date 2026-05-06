@@ -49,13 +49,13 @@
 
 ### Week 3: Mempool、验证与持久化
 
-- [ ] 实现 `storage` 模块：RocksDB 集成
-- [ ] 实现区块、状态、交易索引持久化
-- [ ] 实现基础 mempool：签名校验、去重、nonce ordering、fee priority
-- [ ] 实现交易替换和 mempool eviction
-- [ ] 实现 `validation` 模块：header、parent、root 验证
+- [x] 实现 `storage` 模块：Storage trait + StorageMem 内存实现
+- [x] 实现区块、状态、交易索引持久化
+- [x] 实现基础 mempool：签名校验、去重、nonce ordering、fee priority
+- [x] 实现交易替换和 mempool eviction
+- [x] 实现 `validation` 模块：header、parent、root 验证
 
-**交付物**: Mempool + Validation + Storage
+**交付物**: Mempool + Validation + Storage ✅
 
 ### Week 4: RPC 与单节点运行
 
@@ -118,8 +118,9 @@
 | 性能测试 | `benches/bench.rs` | DONE |
 | 状态机 | `src/state.rs` | DONE |
 | 执行器 | `src/executor.rs` | DONE |
-| Mempool | `src/mempool.rs` | TODO |
-| 存储层 | `src/storage.rs` | TODO |
+| Mempool | `src/mempool.rs` | DONE |
+| 存储层 | `src/storage.rs` | DONE |
+| 验证模块 | `src/validation.rs` | DONE |
 | P2P 模块 | `src/p2p.rs` | TODO |
 | RPC 服务 | `src/rpc.rs` | TODO |
 | 共识模块 | `src/consensus.rs` | TODO |
