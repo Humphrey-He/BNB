@@ -39,14 +39,13 @@
 
 ### Week 2: 签名、状态机与执行器
 
-- [ ] 实现 `crypto` 模块：签名校验、地址派生
-- [ ] 实现 `state` 模块：账户余额、nonce 存储
-- [ ] 实现 state root 计算
-- [ ] 实现状态转移逻辑
-- [ ] 实现 `executor` 模块：交易执行并生成 receipt
-- [ ] 实现 tx root 和 receipt root
+- [x] 实现 `state` 模块：账户余额、nonce 存储
+- [x] 实现 state root 计算
+- [x] 实现状态转移逻辑
+- [x] 实现 `executor` 模块：交易执行并生成 receipt
+- [x] 实现 tx root 和 receipt root
 
-**交付物**: 签名交易 + 状态机 + 执行器源码
+**交付物**: 状态机 + 执行器源码 ✅
 
 ### Week 3: Mempool、验证与持久化
 
@@ -117,8 +116,8 @@
 | Crypto 模块 (hash/merkle) | `src/crypto.rs` | DONE (sig pending) |
 | 错误类型 | `src/error.rs` | DONE |
 | 性能测试 | `benches/bench.rs` | DONE |
-| 状态机 | `src/state.rs` | TODO |
-| 执行器 | `src/executor.rs` | TODO |
+| 状态机 | `src/state.rs` | DONE |
+| 执行器 | `src/executor.rs` | DONE |
 | Mempool | `src/mempool.rs` | TODO |
 | 存储层 | `src/storage.rs` | TODO |
 | P2P 模块 | `src/p2p.rs` | TODO |
