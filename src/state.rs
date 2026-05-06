@@ -40,7 +40,7 @@ impl StateDB {
         self.get_account(addr).map(|a| a.nonce).unwrap_or(0)
     }
 
-    pub fn balance(&self, addr: &Address) -> u64 {
+    pub fn balance(&self, addr: &Address) -> u128 {
         self.get_account(addr).map(|a| a.balance).unwrap_or(0)
     }
 
@@ -52,7 +52,7 @@ impl StateDB {
         account.nonce += 1;
     }
 
-    pub fn decrease_balance(&mut self, addr: &Address, amount: u64) -> Result<()> {
+    pub fn decrease_balance(&mut self, addr: &Address, amount: u128) -> Result<()> {
         let account = self
             .accounts
             .get_mut(addr)
@@ -67,7 +67,7 @@ impl StateDB {
         Ok(())
     }
 
-    pub fn increase_balance(&mut self, addr: &Address, amount: u64) {
+    pub fn increase_balance(&mut self, addr: &Address, amount: u128) {
         let account = self
             .accounts
             .entry(*addr)
@@ -106,8 +106,9 @@ mod tests {
     #[test]
     fn test_new_account() {
         let state = StateDB::new();
-        assert_eq!(state.balance(&&[0u8; 20]), 0);
-        assert_eq!(state.nonce(&&[0u8; 20]), 0);
+        let zero_addr = [0u8; 20];
+        assert_eq!(state.balance(&zero_addr), 0);
+        assert_eq!(state.nonce(&zero_addr), 0);
     }
 
     #[test]
@@ -115,8 +116,8 @@ mod tests {
         let mut state = StateDB::new();
         let addr = [1u8; 20];
         state.set_account(addr, Account::new(100, 1));
-        assert_eq!(state.balance(&&addr), 100);
-        assert_eq!(state.nonce(&&addr), 1);
+        assert_eq!(state.balance(&addr), 100);
+        assert_eq!(state.nonce(&addr), 1);
     }
 
     #[test]

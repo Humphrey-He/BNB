@@ -147,6 +147,48 @@ pub struct Receipt {
     pub logs: Vec<Log>,
 }
 
+impl Receipt {
+    /// Compute hash of receipt content for merkle root.
+    pub fn receipt_hash(&self) -> Hash {
+        // Hash: transaction_hash || success || gas_used || logs_hash
+        use sha2::Digest;
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(self.transaction_hash);
+        hasher.update([self.success as u8]);
+        hasher.update(self.gas_used.to_le_bytes());
+        let logs_hash = if self.logs.is_empty() {
+            ZERO_HASH
+        } else {
+            let log_hashes: Vec<Hash> = self
+                .logs
+                .iter()
+                .map(|log| {
+                    let mut h = sha2::Sha256::new();
+                    h.update(log.address);
+                    for topic in &log.topics {
+                        h.update(*topic);
+                    }
+                    h.update(&log.data);
+                    let mut hash = ZERO_HASH;
+                    hash.copy_from_slice(&h.finalize());
+                    hash
+                })
+                .collect();
+            let mut combined = Vec::new();
+            for lh in &log_hashes {
+                combined.extend_from_slice(lh);
+            }
+            let mut overall = ZERO_HASH;
+            overall.copy_from_slice(&sha2::Sha256::digest(&combined));
+            overall
+        };
+        hasher.update(logs_hash);
+        let mut result = ZERO_HASH;
+        result.copy_from_slice(&hasher.finalize());
+        result
+    }
+}
+
 /// Log entry emitted by contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Log {
@@ -162,7 +204,7 @@ pub struct Log {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
     /// Account balance.
-    pub balance: u64,
+    pub balance: u128,
     /// Account nonce.
     pub nonce: u64,
     /// Code hash (empty for EOA).
@@ -173,7 +215,7 @@ pub struct Account {
 
 impl Account {
     /// Create a new EOA account with zero balance and nonce.
-    pub fn new(balance: u64, nonce: u64) -> Self {
+    pub fn new(balance: u128, nonce: u64) -> Self {
         Self {
             balance,
             nonce,

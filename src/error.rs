@@ -8,7 +8,7 @@ pub enum Error {
     InvalidTransaction(String),
 
     #[error("insufficient balance: have {have}, need {need}")]
-    InsufficientBalance { have: u64, need: u64 },
+    InsufficientBalance { have: u128, need: u128 },
 
     #[error("invalid nonce: expected {expected}, got {got}")]
     InvalidNonce { expected: u64, got: u64 },
