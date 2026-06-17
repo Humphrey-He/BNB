@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: asset-platform-postgres
+    environment:
+      POSTGRES_DB: asset_platform
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d asset_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - asset-platform-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: asset-platform-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - asset-platform-network
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: asset-platform-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-js"]
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - asset-platform-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: asset-platform-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - asset-platform-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:
+  prometheus_data:
+
+networks:
+  asset-platform-network:
+    driver: bridge

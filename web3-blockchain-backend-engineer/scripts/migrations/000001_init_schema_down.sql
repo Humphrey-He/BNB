@@ -1,0 +1,17 @@
+-- Migration: 000001_init_schema
+-- Description: Drop all tables (rollback)
+-- Created: 2026-05-06
+
+DROP TABLE IF EXISTS schema_migrations CASCADE;
+DROP TABLE IF EXISTS scan_checkpoints CASCADE;
+DROP TABLE IF EXISTS nonce_allocations CASCADE;
+DROP TABLE IF EXISTS balances CASCADE;
+DROP TABLE IF EXISTS ledger_entries CASCADE;
+DROP TABLE IF EXISTS withdrawals CASCADE;
+DROP TABLE IF EXISTS deposits CASCADE;
+DROP TABLE IF EXISTS chain_events CASCADE;
+DROP TABLE IF EXISTS blocks CASCADE;
+DROP TABLE IF EXISTS watched_addresses CASCADE;
+DROP TABLE IF EXISTS tokens CASCADE;
+DROP TABLE IF EXISTS rpc_providers CASCADE;
+DROP TABLE IF EXISTS chains CASCADE;

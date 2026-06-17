@@ -1,0 +1,492 @@
+basePath: /api/v1
+definitions:
+  internal_api_handlers.BalanceResponse:
+    properties:
+      account_address:
+        type: string
+      available_balance:
+        type: string
+      chain_id:
+        type: integer
+      frozen_balance:
+        type: string
+      token_id:
+        type: integer
+    type: object
+  internal_api_handlers.ChainResponse:
+    properties:
+      chain_id:
+        type: integer
+      finality_confirmations:
+        type: integer
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        type: string
+      native_symbol:
+        type: string
+    type: object
+  internal_api_handlers.ChainStatusResponse:
+    properties:
+      chain_id:
+        type: integer
+      is_active:
+        type: boolean
+      last_scanned_block:
+        type: integer
+      latest_block:
+        type: integer
+      name:
+        type: string
+      scan_lag:
+        type: integer
+    type: object
+  internal_api_handlers.CreateWithdrawalRequest:
+    properties:
+      amount:
+        type: string
+      chain_id:
+        type: integer
+      to_address:
+        type: string
+      token_id:
+        type: integer
+    required:
+    - amount
+    - chain_id
+    - to_address
+    - token_id
+    type: object
+  internal_api_handlers.DepositResponse:
+    properties:
+      amount:
+        type: string
+      block_number:
+        type: integer
+      chain_id:
+        type: integer
+      confirmations:
+        type: integer
+      created_at:
+        type: string
+      from_address:
+        type: string
+      id:
+        type: integer
+      status:
+        type: string
+      to_address:
+        type: string
+      token_id:
+        type: integer
+      tx_hash:
+        type: string
+    type: object
+  internal_api_handlers.TokenResponse:
+    properties:
+      chain_id:
+        type: integer
+      contract_address:
+        type: string
+      decimals:
+        type: integer
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      is_native:
+        type: boolean
+      symbol:
+        type: string
+    type: object
+  internal_api_handlers.TransactionResponse:
+    properties:
+      amount:
+        type: string
+      block_number:
+        type: integer
+      chain_id:
+        type: integer
+      created_at:
+        type: string
+      from_address:
+        type: string
+      status:
+        type: string
+      to_address:
+        type: string
+      token_id:
+        type: integer
+      tx_hash:
+        type: string
+      type:
+        description: deposit or withdrawal
+        type: string
+    type: object
+  internal_api_handlers.WithdrawalResponse:
+    properties:
+      amount:
+        type: string
+      chain_id:
+        type: integer
+      created_at:
+        type: string
+      from_address:
+        type: string
+      id:
+        type: integer
+      status:
+        type: string
+      to_address:
+        type: string
+      token_id:
+        type: integer
+      tx_hash:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+    url: http://www.example.com/support
+  description: 多链资产后端平台API接口文档，支持余额查询、充值记录、提现申请、链状态等
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Multi-Chain Asset Platform API
+  version: "1.0"
+paths:
+  /addresses/{address}/balances:
+    get:
+      description: 获取指定地址在所有链和Token上的余额
+      parameters:
+      - description: Wallet address
+        in: path
+        name: address
+        required: true
+        type: string
+      - description: Filter by chain ID
+        in: query
+        name: chain_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers.BalanceResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取地址余额
+      tags:
+      - balances
+  /addresses/{address}/transactions:
+    get:
+      description: 获取指定地址的所有交易记录（充值和提现）
+      parameters:
+      - description: Wallet address
+        in: path
+        name: address
+        required: true
+        type: string
+      - description: Limit results (default 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers.TransactionResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      tags:
+      - transactions
+  /chain-status:
+    get:
+      description: 获取各链的扫描进度和延迟
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers.ChainStatusResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取链扫描状态
+      tags:
+      - system
+  /chains:
+    get:
+      description: 获取所有已配置的链信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers.ChainResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取链列表
+      tags:
+      - chains
+  /deposits:
+    get:
+      description: 获取充值记录，支持分页和过滤
+      parameters:
+      - description: Filter by to_address
+        in: query
+        name: address
+        type: string
+      - description: Filter by chain ID
+        in: query
+        name: chain_id
+        type: integer
+      - description: Filter by status (detected, pending_confirmation, confirmed,
+          orphaned)
+        in: query
+        name: status
+        type: string
+      - description: Limit results (default 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers.DepositResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取充值记录列表
+      tags:
+      - deposits
+  /deposits/{id}:
+    get:
+      description: 根据ID获取充值详情
+      parameters:
+      - description: Deposit ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handlers.DepositResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取充值详情
+      tags:
+      - deposits
+  /healthz:
+    get:
+      description: 服务健康状态检查
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 健康检查
+      tags:
+      - system
+  /tokens:
+    get:
+      description: 获取所有已配置的Token信息
+      parameters:
+      - description: Chain ID to filter by
+        in: query
+        name: chain_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers.TokenResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取Token列表
+      tags:
+      - tokens
+  /withdrawals:
+    get:
+      description: 获取提现记录，支持分页和过滤
+      parameters:
+      - description: Filter by from_address
+        in: query
+        name: address
+        type: string
+      - description: Filter by chain ID
+        in: query
+        name: chain_id
+        type: integer
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - description: Limit results (default 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers.WithdrawalResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取提现记录列表
+      tags:
+      - withdrawals
+    post:
+      consumes:
+      - application/json
+      description: 创建新的提现申请，会冻结对应余额
+      parameters:
+      - description: Withdrawal request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handlers.CreateWithdrawalRequest'
+      - description: Idempotency key for preventing duplicate requests
+        in: header
+        name: Idempotency-Key
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_api_handlers.WithdrawalResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 创建提现申请
+      tags:
+      - withdrawals
+  /withdrawals/{id}:
+    get:
+      description: 根据ID获取提现详情
+      parameters:
+      - description: Withdrawal ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handlers.WithdrawalResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取提现详情
+      tags:
+      - withdrawals
+schemes:
+- http
+- https
+swagger: "2.0"

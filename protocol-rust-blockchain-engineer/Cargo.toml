@@ -1,0 +1,33 @@
+[package]
+name = "verifiable-rust-chain-node"
+version = "0.1.0"
+edition = "2021"
+description = "A minimal verifiable blockchain node in Rust"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+sha2 = "0.10"
+sha3 = "0.10"
+k256 = { version = "0.13", features = ["ecdh", "arithmetic"] }
+rand_core = "0.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1"
+hex = "0.4"
+bytes = "1"
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace"] }
+hyper = "1"
+hyper-util = { version = "0.1", features = ["full"] }
+anyhow = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "bench"
+harness = false

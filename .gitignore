@@ -1,0 +1,55 @@
+# 根目录 gitignore (BNB Web3 Career Projects)
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+**/.idea/
+.vscode/
+**/.vscode/
+
+# Claude
+.claude/
+**/.claude/
+
+# Frontend build artifacts
+portfolio-frontend/app/node_modules/
+portfolio-frontend/app/dist/
+portfolio-frontend/app/vite-dev.*.log
+portfolio-frontend/app/.vite/
+portfolio-frontend/app/.cache/
+
+# Rust build artifacts
+protocol-rust-blockchain-engineer/target/
+
+# Foundry build artifacts
+smart-contract-engineer/out/
+smart-contract-engineer/cache/
+smart-contract-engineer/broadcast/
+
+# Go build artifacts
+web3-blockchain-backend-engineer/bin/
+web3-blockchain-backend-engineer/*.exe
+web3-blockchain-backend-engineer/*-linux-amd64
+
+# Local env / secrets
+.env
+.env.local
+*.env.local
+
+# Release bundles / deployment staging
+bnb-release/
+release/
+*.tar.gz
+
+# Ad-hoc scripts / probe build outputs / logs
+scripts/*.exe
+scripts/*-linux-amd64
+scripts/*.log
+scripts/*.err.log
+scripts/*.out.log
+
+# Temporary worktrees
+*-autodeploy/
