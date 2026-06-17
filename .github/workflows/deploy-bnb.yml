@@ -40,6 +40,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate deploy configuration
+        run: |
+          set -euo pipefail
+          echo "DEPLOY_HOST=${DEPLOY_HOST}"
+          echo "DEPLOY_USER=${DEPLOY_USER}"
+          echo "DEPLOY_ROOT=${DEPLOY_ROOT}"
+          echo "FRONTEND_WEB_ROOT=${FRONTEND_WEB_ROOT}"
+          echo "NGINX_CONF_PATH=${NGINX_CONF_PATH}"
+          echo "BNB_SERVER_NAME=${BNB_SERVER_NAME}"
+          echo "GO_API_PORT=${GO_API_PORT}"
+          echo "RUST_RPC_PORT=${RUST_RPC_PORT}"
+          case "${DEPLOY_ROOT}${FRONTEND_WEB_ROOT}${NGINX_CONF_PATH}" in
+            *"("*|*")"*|*"（"*|*"）"*|*"选择"*)
+              echo "::error::Deploy path variables contain translated helper text. Please use pure ASCII paths."
+              exit 1
+              ;;
+          esac
+          [[ "${DEPLOY_ROOT}" = /* ]] || { echo "::error::DEPLOY_ROOT must be an absolute path"; exit 1; }
+          [[ "${FRONTEND_WEB_ROOT}" = /* ]] || { echo "::error::FRONTEND_WEB_ROOT must be an absolute path"; exit 1; }
+          [[ "${NGINX_CONF_PATH}" = /* ]] || { echo "::error::NGINX_CONF_PATH must be an absolute path"; exit 1; }
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -93,6 +114,12 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+
+      - name: Verify remote access
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" "whoami && hostname && test -d '${DEPLOY_ROOT}' && echo DEPLOY_ROOT_OK"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" "printf '%s\n' '${{ secrets.REMOTE_SUDO_PASSWORD }}' | sudo -S -p '' true && echo SUDO_OK"
 
       - name: Copy release and deploy script
         run: |
