@@ -9,7 +9,7 @@ on:
       - "portfolio-frontend/app/**"
       - "web3-blockchain-backend-engineer/**"
       - "protocol-rust-blockchain-engineer/**"
-      - "scripts/deploy_remote_ci.sh"
+      - "scripts/deploy_self_hosted.sh"
   workflow_dispatch:
 
 concurrency:
@@ -18,11 +18,12 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - bnb-prod
     env:
-      RELEASE_NAME: bnb-release-${{ github.sha }}
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '101.43.127.178' }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'ubuntu' }}
       DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/ubuntu/opt/bnb' }}
       FRONTEND_WEB_ROOT: ${{ vars.FRONTEND_WEB_ROOT || '/opt/1panel/www/bnb/frontend' }}
       NGINX_CONF_PATH: ${{ vars.NGINX_CONF_PATH || '/opt/1panel/www/conf.d/bnb.conf' }}
@@ -41,10 +42,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate deploy configuration
+        shell: bash
         run: |
           set -euo pipefail
-          echo "DEPLOY_HOST=${DEPLOY_HOST}"
-          echo "DEPLOY_USER=${DEPLOY_USER}"
+          echo "RUNNER_NAME=${RUNNER_NAME:-unknown}"
           echo "DEPLOY_ROOT=${DEPLOY_ROOT}"
           echo "FRONTEND_WEB_ROOT=${FRONTEND_WEB_ROOT}"
           echo "NGINX_CONF_PATH=${NGINX_CONF_PATH}"
@@ -61,6 +62,17 @@ jobs:
           [[ "${FRONTEND_WEB_ROOT}" = /* ]] || { echo "::error::FRONTEND_WEB_ROOT must be an absolute path"; exit 1; }
           [[ "${NGINX_CONF_PATH}" = /* ]] || { echo "::error::NGINX_CONF_PATH must be an absolute path"; exit 1; }
 
+      - name: Verify local toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v node
+          command -v npm
+          command -v go
+          command -v cargo
+          command -v sudo
+          command -v docker
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -70,7 +82,9 @@ jobs:
 
       - name: Build frontend
         working-directory: portfolio-frontend/app
+        shell: bash
         run: |
+          set -euo pipefail
           npm ci
           npm run build
 
@@ -81,7 +95,9 @@ jobs:
 
       - name: Build Go API
         working-directory: web3-blockchain-backend-engineer
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ../release/api ../release/api/migrations
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/api/api-server-linux-amd64 ./cmd/api-server
           cp -r scripts/migrations/. ../release/api/migrations/
@@ -91,64 +107,29 @@ jobs:
 
       - name: Build Rust node
         working-directory: protocol-rust-blockchain-engineer
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ../release/node
           cargo build --release --locked
           cp target/release/verifiable-rust-chain-node ../release/node/verifiable-rust-chain-node
 
       - name: Stage release bundle
-        run: |
-          mkdir -p release/frontend-dist
-          cp -r portfolio-frontend/app/dist/. release/frontend-dist/
-          tar -czf "${RELEASE_NAME}.tar.gz" release
-
-      - name: Upload CI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.RELEASE_NAME }}
-          path: ${{ env.RELEASE_NAME }}.tar.gz
-          retention-days: 7
-
-      - name: Prepare SSH key
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-
-      - name: Verify remote access
+        shell: bash
         run: |
           set -euo pipefail
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" "whoami && hostname && test -d '${DEPLOY_ROOT}' && echo DEPLOY_ROOT_OK"
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" "printf '%s\n' '${{ secrets.REMOTE_SUDO_PASSWORD }}' | sudo -S -p '' true && echo SUDO_OK"
+          mkdir -p release/frontend-dist
+          cp -r portfolio-frontend/app/dist/. release/frontend-dist/
 
-      - name: Copy release and deploy script
+      - name: Run local deployment
+        shell: bash
+        env:
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          REMOTE_SUDO_PASSWORD: ${{ secrets.REMOTE_SUDO_PASSWORD }}
         run: |
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${RELEASE_NAME}.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/${RELEASE_NAME}.tar.gz"
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 scripts/deploy_remote_ci.sh "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/deploy_remote_ci.sh"
-
-      - name: Run remote deployment
-        run: |
-          REDIS_PASSWORD_VALUE="${{ secrets.REDIS_PASSWORD }}"
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" "\
-            chmod +x /tmp/deploy_remote_ci.sh && \
-            RELEASE_TGZ=/tmp/${RELEASE_NAME}.tar.gz \
-            RELEASE_VERSION=${GITHUB_SHA} \
-            DEPLOY_ROOT='${DEPLOY_ROOT}' \
-            FRONTEND_WEB_ROOT='${FRONTEND_WEB_ROOT}' \
-            NGINX_CONF_PATH='${NGINX_CONF_PATH}' \
-            BNB_SERVER_NAME='${BNB_SERVER_NAME}' \
-            GO_API_PORT='${GO_API_PORT}' \
-            RUST_RPC_PORT='${RUST_RPC_PORT}' \
-            NATS_URL='${NATS_URL}' \
-            APP_ENV='${APP_ENV}' \
-            LOG_LEVEL='${LOG_LEVEL}' \
-            POSTGRES_HOST='${POSTGRES_HOST}' \
-            POSTGRES_PORT='${POSTGRES_PORT}' \
-            POSTGRES_DB='${{ secrets.POSTGRES_DB }}' \
-            POSTGRES_USER='${{ secrets.POSTGRES_USER }}' \
-            POSTGRES_PASSWORD='${{ secrets.POSTGRES_PASSWORD }}' \
-            REDIS_HOST='${REDIS_HOST}' \
-            REDIS_PORT='${REDIS_PORT}' \
-            REDIS_PASSWORD='${REDIS_PASSWORD_VALUE}' \
-            REMOTE_SUDO_PASSWORD='${{ secrets.REMOTE_SUDO_PASSWORD }}' \
-            /tmp/deploy_remote_ci.sh"
+          set -euo pipefail
+          chmod +x scripts/deploy_self_hosted.sh
+          ./scripts/deploy_self_hosted.sh

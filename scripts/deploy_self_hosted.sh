@@ -21,8 +21,8 @@ run_sudo() {
 sync_dir() {
     local src="$1"
     local dest="$2"
+    run_sudo mkdir -p "${dest}"
     if command -v rsync >/dev/null 2>&1; then
-        run_sudo mkdir -p "${dest}"
         run_sudo rsync -a --delete "${src}/" "${dest}/"
     else
         run_sudo rm -rf "${dest}"
@@ -31,8 +31,7 @@ sync_dir() {
     fi
 }
 
-require_env RELEASE_TGZ
-require_env RELEASE_VERSION
+require_env GITHUB_WORKSPACE
 require_env DEPLOY_ROOT
 require_env FRONTEND_WEB_ROOT
 require_env NGINX_CONF_PATH
@@ -54,10 +53,7 @@ require_env REMOTE_SUDO_PASSWORD
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
 
-log "Extracting ${RELEASE_TGZ}"
-tar -xzf "${RELEASE_TGZ}" -C "${WORKDIR}"
-
-RELEASE_DIR="${WORKDIR}/release"
+RELEASE_DIR="${GITHUB_WORKSPACE}/release"
 API_SRC="${RELEASE_DIR}/api"
 FRONTEND_SRC="${RELEASE_DIR}/frontend-dist"
 NODE_SRC="${RELEASE_DIR}/node"
@@ -68,18 +64,24 @@ NODE_SRC="${RELEASE_DIR}/node"
 
 API_DIR="${DEPLOY_ROOT}/api"
 NODE_DIR="${DEPLOY_ROOT}/node"
-RELEASES_DIR="${DEPLOY_ROOT}/releases/${RELEASE_VERSION}"
+RELEASES_DIR="${DEPLOY_ROOT}/releases/${GITHUB_SHA:-manual}"
 
-log "Preparing directories"
+log "Preparing target directories"
 run_sudo mkdir -p "${API_DIR}" "${API_DIR}/scripts/migrations" "${NODE_DIR}/target/release" "${RELEASES_DIR}"
 
-log "Archiving uploaded bundle"
-run_sudo cp -f "${RELEASE_TGZ}" "${RELEASES_DIR}/release.tar.gz"
+log "Saving release metadata"
+cat > "${WORKDIR}/release-meta.txt" <<EOF
+commit=${GITHUB_SHA:-manual}
+run_id=${GITHUB_RUN_ID:-manual}
+run_attempt=${GITHUB_RUN_ATTEMPT:-manual}
+deployed_at=$(date '+%F %T')
+EOF
+run_sudo mv "${WORKDIR}/release-meta.txt" "${RELEASES_DIR}/release-meta.txt"
 
-log "Deploying frontend files"
+log "Deploying frontend"
 sync_dir "${FRONTEND_SRC}" "${FRONTEND_WEB_ROOT}"
 
-log "Deploying Go API binary and migrations"
+log "Deploying Go API"
 run_sudo install -m 755 "${API_SRC}/api-server-linux-amd64" "${API_DIR}/api-server-linux-amd64"
 if [[ -d "${API_SRC}/migrations" ]]; then
     sync_dir "${API_SRC}/migrations" "${API_DIR}/scripts/migrations"
@@ -111,7 +113,7 @@ EOF
 run_sudo mv "${WORKDIR}/api.env" "${API_DIR}/.env"
 run_sudo chmod 600 "${API_DIR}/.env"
 
-log "Deploying Rust node binary"
+log "Deploying Rust node"
 run_sudo install -m 755 "${NODE_SRC}/verifiable-rust-chain-node" "${NODE_DIR}/target/release/verifiable-rust-chain-node"
 
 SERVICE_USER="$(id -un)"
@@ -159,7 +161,7 @@ EOF
 run_sudo mv "${WORKDIR}/asset-platform-api.service" /etc/systemd/system/asset-platform-api.service
 run_sudo mv "${WORKDIR}/chain-node.service" /etc/systemd/system/chain-node.service
 
-log "Refreshing 1Panel OpenResty site config"
+log "Refreshing 1Panel OpenResty config"
 cat > "${WORKDIR}/bnb.conf" <<EOF
 server {
     listen 80 default_server;
@@ -228,5 +230,4 @@ curl -fsS "http://127.0.0.1:${GO_API_PORT}/healthz" >/dev/null
 curl -fsS "http://127.0.0.1:${GO_API_PORT}/api/v1/chain-status" >/dev/null
 curl -fsS -X POST "http://127.0.0.1:${RUST_RPC_PORT}/rpc/get_block_number" >/dev/null
 
-log "Deployment completed"
-
+log "Self-hosted deployment completed"
