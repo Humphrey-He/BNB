@@ -33,11 +33,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	rpcURL := os.Getenv("SCAN_RPC_URL")
-	if rpcURL == "" {
-		log.Fatal("SCAN_RPC_URL is required")
-	}
-
 	cfgRuntime := scanner.DefaultConfig(chainDBID)
 	if batchSize := os.Getenv("SCAN_BATCH_SIZE"); batchSize != "" {
 		parsed, err := strconv.ParseUint(batchSize, 10, 64)
@@ -47,9 +42,17 @@ func main() {
 		cfgRuntime.BatchSize = parsed
 	}
 
-	rpcClient, err := scanner.NewRPCClient(rpcURL)
+	rpcClient, err := scanner.NewResilientClientFromRepo(chainDBID, repository.NewRPCProviderRepository(db))
 	if err != nil {
-		log.Fatal(err)
+		logger.Warn("failed to initialize resilient RPC client, falling back to SCAN_RPC_URL", "error", err)
+		rpcURL := os.Getenv("SCAN_RPC_URL")
+		if rpcURL == "" {
+			log.Fatal("SCAN_RPC_URL is required when rpc_providers are unavailable")
+		}
+		rpcClient, err = scanner.NewRPCClient(rpcURL)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	service := scanner.NewScanner(

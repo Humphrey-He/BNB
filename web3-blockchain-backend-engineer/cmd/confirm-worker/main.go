@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/asset-platform/multi-chain-asset-platform/internal/app"
@@ -29,14 +30,22 @@ func main() {
 	}
 	defer nc.Close()
 
-	rpcURL := os.Getenv("SCAN_RPC_URL")
-	if rpcURL == "" {
-		log.Fatal("SCAN_RPC_URL is required")
-	}
-
-	rpcClient, err := scanner.NewRPCClient(rpcURL)
+	chainDBID, err := mustEnvInt64("SCAN_CHAIN_DB_ID")
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	rpcClient, err := confirmworker.NewResilientBlockNumberClient(chainDBID, repository.NewRPCProviderRepository(db))
+	if err != nil {
+		logger.Warn("failed to initialize resilient RPC client, falling back to SCAN_RPC_URL", "error", err)
+		rpcURL := os.Getenv("SCAN_RPC_URL")
+		if rpcURL == "" {
+			log.Fatal("SCAN_RPC_URL is required when rpc_providers are unavailable")
+		}
+		rpcClient, err = scanner.NewRPCClient(rpcURL)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	service := confirmworker.NewConfirmWorker(
@@ -54,4 +63,12 @@ func main() {
 	if err != nil && err != context.Canceled {
 		log.Fatal(err)
 	}
+}
+
+func mustEnvInt64(key string) (int64, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return 0, os.ErrNotExist
+	}
+	return strconv.ParseInt(value, 10, 64)
 }

@@ -37,6 +37,9 @@ jobs:
       POSTGRES_PORT: ${{ vars.POSTGRES_PORT || '5432' }}
       REDIS_HOST: ${{ vars.REDIS_HOST || '127.0.0.1' }}
       REDIS_PORT: ${{ vars.REDIS_PORT || '6379' }}
+      SCAN_CHAIN_DB_ID: ${{ vars.SCAN_CHAIN_DB_ID || '1' }}
+      SCAN_BATCH_SIZE: ${{ vars.SCAN_BATCH_SIZE || '2000' }}
+      SCAN_RPC_URL: ${{ vars.SCAN_RPC_URL || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,12 +69,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          command -v node
-          command -v npm
-          command -v go
-          command -v cargo
+          command -v bash
           command -v sudo
           command -v docker
+          command -v curl
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -98,8 +99,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ../release/api ../release/api/migrations
+          mkdir -p ../release/api ../release/workers ../release/api/migrations
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/api/api-server-linux-amd64 ./cmd/api-server
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/scanner-linux-amd64 ./cmd/scanner
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/parser-linux-amd64 ./cmd/parser
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/confirm-worker-linux-amd64 ./cmd/confirm-worker
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/ledger-service-linux-amd64 ./cmd/ledger-service
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/rpc-health-linux-amd64 ./cmd/rpc-health
           cp -r scripts/migrations/. ../release/api/migrations/
 
       - name: Setup Rust
