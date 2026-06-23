@@ -105,6 +105,8 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/parser-linux-amd64 ./cmd/parser
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/confirm-worker-linux-amd64 ./cmd/confirm-worker
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/ledger-service-linux-amd64 ./cmd/ledger-service
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/withdrawal-worker-linux-amd64 ./cmd/withdrawal-worker
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/broadcaster-linux-amd64 ./cmd/broadcaster
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../release/workers/rpc-health-linux-amd64 ./cmd/rpc-health
           cp -r scripts/migrations/. ../release/api/migrations/
 

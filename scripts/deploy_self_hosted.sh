@@ -64,6 +64,8 @@ NODE_SRC="${RELEASE_DIR}/node"
 [[ -x "${WORKERS_SRC}/parser-linux-amd64" ]] || { echo "[FATAL] missing parser binary" >&2; exit 1; }
 [[ -x "${WORKERS_SRC}/confirm-worker-linux-amd64" ]] || { echo "[FATAL] missing confirm-worker binary" >&2; exit 1; }
 [[ -x "${WORKERS_SRC}/ledger-service-linux-amd64" ]] || { echo "[FATAL] missing ledger-service binary" >&2; exit 1; }
+[[ -x "${WORKERS_SRC}/withdrawal-worker-linux-amd64" ]] || { echo "[FATAL] missing withdrawal-worker binary" >&2; exit 1; }
+[[ -x "${WORKERS_SRC}/broadcaster-linux-amd64" ]] || { echo "[FATAL] missing broadcaster binary" >&2; exit 1; }
 [[ -x "${WORKERS_SRC}/rpc-health-linux-amd64" ]] || { echo "[FATAL] missing rpc-health binary" >&2; exit 1; }
 [[ -f "${FRONTEND_SRC}/index.html" ]] || { echo "[FATAL] missing frontend dist" >&2; exit 1; }
 [[ -x "${NODE_SRC}/verifiable-rust-chain-node" ]] || { echo "[FATAL] missing Rust binary" >&2; exit 1; }
@@ -99,6 +101,8 @@ run_sudo install -m 755 "${WORKERS_SRC}/scanner-linux-amd64" "${WORKERS_DIR}/sca
 run_sudo install -m 755 "${WORKERS_SRC}/parser-linux-amd64" "${WORKERS_DIR}/parser-linux-amd64"
 run_sudo install -m 755 "${WORKERS_SRC}/confirm-worker-linux-amd64" "${WORKERS_DIR}/confirm-worker-linux-amd64"
 run_sudo install -m 755 "${WORKERS_SRC}/ledger-service-linux-amd64" "${WORKERS_DIR}/ledger-service-linux-amd64"
+run_sudo install -m 755 "${WORKERS_SRC}/withdrawal-worker-linux-amd64" "${WORKERS_DIR}/withdrawal-worker-linux-amd64"
+run_sudo install -m 755 "${WORKERS_SRC}/broadcaster-linux-amd64" "${WORKERS_DIR}/broadcaster-linux-amd64"
 run_sudo install -m 755 "${WORKERS_SRC}/rpc-health-linux-amd64" "${WORKERS_DIR}/rpc-health-linux-amd64"
 
 REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
@@ -269,12 +273,54 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 EOF
 
+cat > "${WORKDIR}/asset-withdrawal-worker.service" <<EOF
+[Unit]
+Description=BNB Withdrawal Worker
+After=network.target asset-platform-api.service
+Wants=asset-platform-api.service
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+WorkingDirectory=${WORKERS_DIR}
+EnvironmentFile=${WORKERS_DIR}/.env
+ExecStart=${WORKERS_DIR}/withdrawal-worker-linux-amd64
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > "${WORKDIR}/asset-broadcaster.service" <<EOF
+[Unit]
+Description=BNB Withdrawal Broadcaster
+After=network.target asset-withdrawal-worker.service
+Wants=asset-withdrawal-worker.service
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+WorkingDirectory=${WORKERS_DIR}
+EnvironmentFile=${WORKERS_DIR}/.env
+ExecStart=${WORKERS_DIR}/broadcaster-linux-amd64
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 run_sudo mv "${WORKDIR}/asset-platform-api.service" /etc/systemd/system/asset-platform-api.service
 run_sudo mv "${WORKDIR}/chain-node.service" /etc/systemd/system/chain-node.service
 run_sudo mv "${WORKDIR}/asset-scanner.service" /etc/systemd/system/asset-scanner.service
 run_sudo mv "${WORKDIR}/asset-parser.service" /etc/systemd/system/asset-parser.service
 run_sudo mv "${WORKDIR}/asset-confirm-worker.service" /etc/systemd/system/asset-confirm-worker.service
 run_sudo mv "${WORKDIR}/asset-ledger.service" /etc/systemd/system/asset-ledger.service
+run_sudo mv "${WORKDIR}/asset-withdrawal-worker.service" /etc/systemd/system/asset-withdrawal-worker.service
+run_sudo mv "${WORKDIR}/asset-broadcaster.service" /etc/systemd/system/asset-broadcaster.service
 
 log "Refreshing 1Panel OpenResty config"
 cat > "${WORKDIR}/bnb.conf" <<EOF
@@ -336,8 +382,8 @@ fi
 
 log "Reloading systemd and OpenResty"
 run_sudo systemctl daemon-reload
-run_sudo systemctl enable asset-platform-api chain-node asset-scanner asset-parser asset-confirm-worker asset-ledger
-run_sudo systemctl restart asset-platform-api chain-node asset-scanner asset-parser asset-confirm-worker asset-ledger
+run_sudo systemctl enable asset-platform-api chain-node asset-scanner asset-parser asset-confirm-worker asset-ledger asset-withdrawal-worker asset-broadcaster
+run_sudo systemctl restart asset-platform-api chain-node asset-scanner asset-parser asset-confirm-worker asset-ledger asset-withdrawal-worker asset-broadcaster
 run_sudo docker exec "${OPENRESTY_CONTAINER}" /usr/local/openresty/bin/openresty -t
 run_sudo docker exec "${OPENRESTY_CONTAINER}" /usr/local/openresty/bin/openresty -s reload
 
@@ -349,6 +395,7 @@ run_sudo systemctl is-active --quiet asset-scanner
 run_sudo systemctl is-active --quiet asset-parser
 run_sudo systemctl is-active --quiet asset-confirm-worker
 run_sudo systemctl is-active --quiet asset-ledger
-run_sudo bash -lc "cd '${WORKERS_DIR}' && set -a && source ./.env && set +a && ./rpc-health-linux-amd64 >/dev/null"
+run_sudo systemctl is-active --quiet asset-withdrawal-worker
+run_sudo systemctl is-active --quiet asset-broadcaster
 
 log "Self-hosted deployment completed"
