@@ -28,17 +28,19 @@ func main() {
 	}
 	defer nc.Close()
 
-	nonceRepo := broadcaster.NewNonceRepositoryAdapter(repository.NewNonceAllocationRepository(db))
-	rpcClient := &broadcaster.ReceiptRPCAdapter{}
-
-	service := broadcaster.NewBroadcaster(
+	service, err := broadcaster.NewBroadcasterFromEnv(
 		db,
 		nc,
 		repository.NewWithdrawalRepository(db),
-		nonceRepo,
-		rpcClient,
+		repository.NewTokenRepository(db),
+		broadcaster.NewNonceRepositoryAdapter(repository.NewNonceAllocationRepository(db)),
+		repository.NewChainRepository(db),
+		repository.NewRPCProviderRepository(db),
 		logger,
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

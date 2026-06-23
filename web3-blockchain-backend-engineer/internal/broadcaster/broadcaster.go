@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/asset-platform/multi-chain-asset-platform/internal/repository"
+	"github.com/asset-platform/multi-chain-asset-platform/internal/rpcgateway"
 	"github.com/asset-platform/multi-chain-asset-platform/internal/withdrawalservice"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/nats-io/nats.go"
 )
 
@@ -27,6 +30,7 @@ type RPCClient interface {
 	GasPrice(ctx context.Context, chainID int64) (*big.Int, error)
 	SendRawTransaction(ctx context.Context, chainID int64, signedTx []byte) (string, error)
 	NonceAt(ctx context.Context, chainID int64, address string) (uint64, error)
+	EstimateGas(ctx context.Context, req *EstimateGasRequest) (uint64, error)
 	GetTransactionReceipt(ctx context.Context, chainID int64, txHash string) (*TxReceipt, error)
 }
 
@@ -40,8 +44,10 @@ type Broadcaster struct {
 	db             *sql.DB
 	natsClient     *nats.Conn
 	withdrawalRepo repository.WithdrawalRepository
+	tokenRepo      repository.TokenRepository
 	nonceRepo      NonceRepository
 	rpcClient      RPCClient
+	signer         Signer
 	logger         *slog.Logger
 	checkInterval  time.Duration
 	mu             sync.RWMutex
@@ -68,16 +74,20 @@ func NewBroadcaster(
 	db *sql.DB,
 	natsClient *nats.Conn,
 	withdrawalRepo repository.WithdrawalRepository,
+	tokenRepo repository.TokenRepository,
 	nonceRepo NonceRepository,
 	rpcClient RPCClient,
+	signer Signer,
 	logger *slog.Logger,
 ) *Broadcaster {
 	return &Broadcaster{
 		db:             db,
 		natsClient:     natsClient,
 		withdrawalRepo: withdrawalRepo,
+		tokenRepo:      tokenRepo,
 		nonceRepo:      nonceRepo,
 		rpcClient:      rpcClient,
+		signer:         signer,
 		logger:         logger,
 		checkInterval:  3 * time.Second,
 		tracked:        make(map[int64]*trackedWithdrawal),
@@ -179,65 +189,198 @@ func (b *Broadcaster) handleWithdrawalBroadcast(msg *nats.Msg) {
 
 // broadcastTransaction signs and broadcasts a withdrawal transaction
 func (b *Broadcaster) broadcastTransaction(ctx context.Context, withdrawal *repository.Withdrawal) (string, error) {
-	// Get nonce - use allocated nonce or fetch from chain
-	var nonce int64
-	if withdrawal.Nonce > 0 {
-		nonce = withdrawal.Nonce
-	} else {
-		chainNonce, err := b.rpcClient.NonceAt(ctx, withdrawal.ChainID, withdrawal.FromAddress)
-		if err != nil {
-			return "", fmt.Errorf("failed to get nonce: %w", err)
-		}
-		nonce = int64(chainNonce)
+	if b.signer == nil {
+		return "", fmt.Errorf("signer is not configured")
+	}
+	if b.rpcClient == nil {
+		return "", fmt.Errorf("rpc client is not configured")
+	}
+	if !common.IsHexAddress(withdrawal.ToAddress) {
+		return "", fmt.Errorf("invalid withdrawal destination address: %s", withdrawal.ToAddress)
 	}
 
-	// Get gas price
+	token, err := b.resolveToken(withdrawal)
+	if err != nil {
+		return "", err
+	}
+
+	nonce, err := b.resolveNonce(ctx, withdrawal)
+	if err != nil {
+		return "", err
+	}
+
 	gasPrice, err := b.rpcClient.GasPrice(ctx, withdrawal.ChainID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get gas price: %w", err)
 	}
 
-	// Build unsigned transaction data
-	// In production, this would build a proper signed transaction
-	txData := buildTransactionData(withdrawal, nonce, gasPrice)
+	amount, ok := new(big.Int).SetString(strings.TrimSpace(withdrawal.Amount), 10)
+	if !ok || amount.Sign() <= 0 {
+		return "", fmt.Errorf("invalid withdrawal amount: %s", withdrawal.Amount)
+	}
 
-	// Sign the transaction (placeholder - in production uses proper key management)
-	signedTx := b.signTransaction(txData, withdrawal.FromAddress)
+	req, err := b.buildSignRequest(ctx, withdrawal, token, nonce, amount, gasPrice)
+	if err != nil {
+		return "", err
+	}
 
-	// Send to blockchain
+	signedTx, err := b.signer.SignWithdrawal(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign withdrawal transaction: %w", err)
+	}
+
 	txHash, err := b.rpcClient.SendRawTransaction(ctx, withdrawal.ChainID, signedTx)
 	if err != nil {
+		if releaseErr := b.nonceRepo.Release(ctx, withdrawal.ChainID, withdrawal.FromAddress, int64(nonce)); releaseErr != nil {
+			b.logger.Warn("failed to release nonce after send failure",
+				"withdrawal_id", withdrawal.ID,
+				"nonce", nonce,
+				"error", releaseErr,
+			)
+		}
 		return "", fmt.Errorf("failed to send transaction: %w", err)
 	}
 
+	withdrawal.Nonce = int64(nonce)
 	return txHash, nil
 }
 
-// buildTransactionData creates the transaction data for a withdrawal
-func buildTransactionData(withdrawal *repository.Withdrawal, nonce int64, gasPrice *big.Int) []byte {
-	// In production, this would build an EIP-1559 or legacy transaction
-	// For now, return a placeholder
-	var data strings.Builder
-	data.WriteString(fmt.Sprintf("chain=%d", withdrawal.ChainID))
-	data.WriteString(fmt.Sprintf("&to=%s", withdrawal.ToAddress))
-	data.WriteString(fmt.Sprintf("&value=%s", withdrawal.Amount))
-	data.WriteString(fmt.Sprintf("&nonce=%d", nonce))
-	data.WriteString(fmt.Sprintf("&gasPrice=%s", gasPrice.String()))
-	return []byte(data.String())
+func (b *Broadcaster) resolveToken(withdrawal *repository.Withdrawal) (*repository.Token, error) {
+	if b.tokenRepo == nil {
+		return nil, fmt.Errorf("token repository is not configured")
+	}
+
+	token, err := b.tokenRepo.GetByID(withdrawal.TokenID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load token metadata: %w", err)
+	}
+	return token, nil
 }
 
-// signTransaction signs transaction data
-// In production, this would use proper key management (HSM, KMS, etc.)
-func (b *Broadcaster) signTransaction(txData []byte, fromAddress string) []byte {
-	// Placeholder signature - in production this would:
-	// 1. Retrieve private key from secure key management
-	// 2. Sign the transaction hash
-	// 3. Return the RLP-encoded signed transaction
-	b.logger.Debug("Signing transaction", "from", fromAddress)
+func (b *Broadcaster) resolveNonce(ctx context.Context, withdrawal *repository.Withdrawal) (uint64, error) {
+	if withdrawal.Nonce > 0 {
+		return uint64(withdrawal.Nonce), nil
+	}
+	if b.nonceRepo == nil {
+		return 0, fmt.Errorf("nonce repository is not configured")
+	}
 
-	// Return txData as placeholder for signed bytes
-	// Real implementation would return: rlp.Encode(signedTx)
-	return append([]byte("signed:"), txData...)
+	chainNonce, err := b.rpcClient.NonceAt(ctx, withdrawal.ChainID, withdrawal.FromAddress)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get pending nonce: %w", err)
+	}
+	allocatedNonce, err := b.nonceRepo.Allocate(ctx, withdrawal.ChainID, withdrawal.FromAddress)
+	if err != nil {
+		return 0, fmt.Errorf("failed to allocate nonce: %w", err)
+	}
+	if uint64(allocatedNonce) < chainNonce {
+		return chainNonce, nil
+	}
+	return uint64(allocatedNonce), nil
+}
+
+func (b *Broadcaster) buildSignRequest(
+	ctx context.Context,
+	withdrawal *repository.Withdrawal,
+	token *repository.Token,
+	nonce uint64,
+	amount *big.Int,
+	gasPrice *big.Int,
+) (*SignRequest, error) {
+	fromAddress := common.HexToAddress(withdrawal.FromAddress)
+	toAddress := common.HexToAddress(withdrawal.ToAddress)
+
+	req := &SignRequest{
+		ChainID:  withdrawal.ChainID,
+		Nonce:    nonce,
+		To:       toAddress,
+		Value:    amount,
+		GasPrice: gasPrice,
+		Token:    token,
+	}
+
+	gasLimit, err := b.estimateGasLimit(ctx, fromAddress, req)
+	if err != nil {
+		return nil, err
+	}
+	req.GasLimit = gasLimit
+
+	return req, nil
+}
+
+func (b *Broadcaster) estimateGasLimit(ctx context.Context, from common.Address, req *SignRequest) (uint64, error) {
+	callReq := &EstimateGasRequest{
+		ChainID:  req.ChainID,
+		From:     from,
+		Value:    big.NewInt(0).Set(req.Value),
+		GasPrice: req.GasPrice,
+	}
+
+	if req.Token == nil || req.Token.IsNative {
+		callReq.To = ptrAddress(req.To)
+		callReq.Value = big.NewInt(0).Set(req.Value)
+	} else {
+		signer, ok := b.signer.(*LocalHexKeySigner)
+		if !ok {
+			return 0, fmt.Errorf("unsupported signer implementation for erc20 gas estimation")
+		}
+		input, err := signer.erc20ABI.Pack("transfer", req.To, req.Value)
+		if err != nil {
+			return 0, fmt.Errorf("failed to encode erc20 calldata: %w", err)
+		}
+		contract := common.HexToAddress(req.Token.ContractAddress)
+		callReq.To = ptrAddress(contract)
+		callReq.Value = big.NewInt(0)
+		callReq.Data = input
+	}
+
+	gas, err := b.rpcClient.EstimateGas(ctx, callReq)
+	if err != nil {
+		return 0, fmt.Errorf("failed to estimate gas: %w", err)
+	}
+
+	buffered := gas + gas/5
+	if buffered < 21_000 {
+		buffered = 21_000
+	}
+	return buffered, nil
+}
+
+func NewBroadcasterFromEnv(
+	db *sql.DB,
+	natsClient *nats.Conn,
+	withdrawalRepo repository.WithdrawalRepository,
+	tokenRepo repository.TokenRepository,
+	nonceRepo NonceRepository,
+	chainRepo repository.ChainRepository,
+	providerRepo repository.RPCProviderRepository,
+	logger *slog.Logger,
+) (*Broadcaster, error) {
+	privateKey := strings.TrimSpace(os.Getenv("WITHDRAWAL_SIGNER_PRIVATE_KEY"))
+	if privateKey == "" {
+		return nil, fmt.Errorf("WITHDRAWAL_SIGNER_PRIVATE_KEY is required")
+	}
+
+	signer, err := NewLocalHexKeySigner(privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	rpcClient := NewEVMRPCAdapter(chainRepo, providerRepo)
+	return NewBroadcaster(
+		db,
+		natsClient,
+		withdrawalRepo,
+		tokenRepo,
+		nonceRepo,
+		rpcClient,
+		signer,
+		logger,
+	), nil
+}
+
+func IsReceiptPending(err error) bool {
+	return err == rpcgateway.ErrReceiptNotFound
 }
 
 // trackWithdrawal adds a withdrawal to the retry tracking
