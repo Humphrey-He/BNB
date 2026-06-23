@@ -1,0 +1,17 @@
+[Unit]
+Description=BNB Ledger Service
+After=network.target asset-confirm-worker.service
+Wants=asset-confirm-worker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/opt/bnb/workers
+EnvironmentFile=/home/ubuntu/opt/bnb/workers/.env
+ExecStart=/home/ubuntu/opt/bnb/workers/ledger-service-linux-amd64
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

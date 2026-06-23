@@ -32,7 +32,16 @@ DEPLOY_ROOT="/opt/bnb"
 # 1.停 systemd 单元
 #==========================================================
 log "1. 停 systemd 单元"
-for svc in asset-platform-api chain-node; do
+for svc in \
+    asset-platform-api \
+    asset-scanner \
+    asset-parser \
+    asset-confirm-worker \
+    asset-ledger \
+    asset-withdrawal-worker \
+    asset-broadcaster \
+    chain-node
+do
     if systemctl list-unit-files | grep -q "^${svc}.service"; then
         systemctl stop "${svc}" 2>/dev/null || warn "${svc} stop 失败(可能没在跑)"
         systemctl disable "${svc}" 2>/dev/null || warn "${svc} disable 失败"
@@ -110,4 +119,5 @@ echo "验证残留:"
 ss -lntp 2>/dev/null | grep -E ":(8080|8081|4222|8222)\b" || echo "  无残留端口 ✓"
 docker ps -a --format '{{.Names}}' | grep -q '^nats$' && echo "  nats 还在!" || echo "  nats 已清 ✓"
 ls /etc/systemd/system/asset-platform-api.service 2>/dev/null && echo "  api 单元还在!" || echo "  api 单元已清 ✓"
+ls /etc/systemd/system/asset-broadcaster.service 2>/dev/null && echo "  broadcaster 单元还在!" || echo "  broadcaster 单元已清 ✓"
 ls /etc/systemd/system/chain-node.service 2>/dev/null && echo "  node 单元还在!" || echo "  node 单元已清 ✓"

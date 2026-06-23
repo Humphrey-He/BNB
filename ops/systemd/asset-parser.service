@@ -1,0 +1,17 @@
+[Unit]
+Description=BNB Event Parser
+After=network.target asset-scanner.service
+Wants=asset-scanner.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/opt/bnb/workers
+EnvironmentFile=/home/ubuntu/opt/bnb/workers/.env
+ExecStart=/home/ubuntu/opt/bnb/workers/parser-linux-amd64
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

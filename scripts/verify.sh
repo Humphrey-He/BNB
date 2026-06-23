@@ -47,6 +47,12 @@ echo
 
 echo "[1/6] systemd 单元"
 check "asset-platform-api active" "${SUDO}systemctl is-active --quiet asset-platform-api"
+check "asset-scanner active" "${SUDO}systemctl is-active --quiet asset-scanner"
+check "asset-parser active" "${SUDO}systemctl is-active --quiet asset-parser"
+check "asset-confirm-worker active" "${SUDO}systemctl is-active --quiet asset-confirm-worker"
+check "asset-ledger active" "${SUDO}systemctl is-active --quiet asset-ledger"
+check "asset-withdrawal-worker active" "${SUDO}systemctl is-active --quiet asset-withdrawal-worker"
+check "asset-broadcaster active" "${SUDO}systemctl is-active --quiet asset-broadcaster"
 check "chain-node active" "${SUDO}systemctl is-active --quiet chain-node"
 [[ $FAIL -gt 0 ]] && hint "看日志:journalctl -u asset-platform-api -n 30 --no-pager"
 echo

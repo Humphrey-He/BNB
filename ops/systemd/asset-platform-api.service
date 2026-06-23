@@ -1,0 +1,16 @@
+[Unit]
+Description=BNB Asset Platform API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/opt/bnb/api
+EnvironmentFile=/home/ubuntu/opt/bnb/api/.env
+ExecStart=/home/ubuntu/opt/bnb/api/api-server-linux-amd64
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
