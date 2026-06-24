@@ -17,13 +17,13 @@ const (
 // NonceAllocation represents the nonce_allocations table
 type NonceAllocation struct {
 	ID           int64                 `json:"id"`
-	ChainID     int64                 `json:"chain_id"`
-	FromAddress string                `json:"from_address"`
-	Nonce       int64                 `json:"nonce"`
-	WithdrawalID int64                `json:"withdrawal_id,omitempty"`
-	Status      NonceAllocationStatus `json:"status"`
-	ExpiresAt   time.Time             `json:"expires_at"`
-	CreatedAt   time.Time             `json:"created_at"`
+	ChainID      int64                 `json:"chain_id"`
+	FromAddress  string                `json:"from_address"`
+	Nonce        int64                 `json:"nonce"`
+	WithdrawalID int64                 `json:"withdrawal_id,omitempty"`
+	Status       NonceAllocationStatus `json:"status"`
+	ExpiresAt    time.Time             `json:"expires_at"`
+	CreatedAt    time.Time             `json:"created_at"`
 }
 
 // NonceAllocationRepository defines the interface for nonce allocation data access
@@ -126,10 +126,10 @@ func (r *nonceAllocationRepository) GetNextAvailableNonce(chainID int64, fromAdd
 	query := `
 		SELECT COALESCE(MAX(nonce), -1) + 1
 		FROM nonce_allocations
-		WHERE chain_id = $1 AND from_address = $2
+		WHERE chain_id = $1 AND from_address = $2 AND status <> $3
 	`
 	var nonce int64
-	err := r.db.QueryRow(query, chainID, fromAddress).Scan(&nonce)
+	err := r.db.QueryRow(query, chainID, fromAddress, NonceStatusExpired).Scan(&nonce)
 	return nonce, err
 }
 

@@ -21,6 +21,10 @@ func NewNonceRepositoryAdapter(repo repository.NonceAllocationRepository) NonceR
 }
 
 func (a *nonceRepositoryAdapter) Allocate(ctx context.Context, chainID int64, address string) (int64, error) {
+	return a.AllocateAtLeast(ctx, chainID, address, 0, 0)
+}
+
+func (a *nonceRepositoryAdapter) AllocateAtLeast(ctx context.Context, chainID int64, address string, minNonce uint64, withdrawalID int64) (int64, error) {
 	_ = ctx
 	if a.repo == nil {
 		return 0, fmt.Errorf("nonce allocation repository is not configured")
@@ -30,13 +34,17 @@ func (a *nonceRepositoryAdapter) Allocate(ctx context.Context, chainID int64, ad
 	if err != nil {
 		return 0, err
 	}
+	if nonce < int64(minNonce) {
+		nonce = int64(minNonce)
+	}
 
 	err = a.repo.Create(&repository.NonceAllocation{
-		ChainID:     chainID,
-		FromAddress: address,
-		Nonce:       nonce,
-		Status:      repository.NonceStatusAllocated,
-		ExpiresAt:   time.Now().Add(a.ttl),
+		ChainID:      chainID,
+		FromAddress:  address,
+		Nonce:        nonce,
+		WithdrawalID: withdrawalID,
+		Status:       repository.NonceStatusAllocated,
+		ExpiresAt:    time.Now().Add(a.ttl),
 	})
 	if err != nil {
 		return 0, err
@@ -51,4 +59,12 @@ func (a *nonceRepositoryAdapter) Release(ctx context.Context, chainID int64, add
 		return fmt.Errorf("nonce allocation repository is not configured")
 	}
 	return a.repo.MarkExpired(chainID, address, nonce)
+}
+
+func (a *nonceRepositoryAdapter) MarkUsed(ctx context.Context, chainID int64, address string, nonce int64) error {
+	_ = ctx
+	if a.repo == nil {
+		return fmt.Errorf("nonce allocation repository is not configured")
+	}
+	return a.repo.MarkUsed(chainID, address, nonce)
 }

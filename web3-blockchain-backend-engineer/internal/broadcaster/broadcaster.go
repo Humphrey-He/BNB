@@ -57,7 +57,9 @@ type Broadcaster struct {
 // NonceRepository manages nonce allocation
 type NonceRepository interface {
 	Allocate(ctx context.Context, chainID int64, address string) (int64, error)
+	AllocateAtLeast(ctx context.Context, chainID int64, address string, minNonce uint64, withdrawalID int64) (int64, error)
 	Release(ctx context.Context, chainID int64, address string, nonce int64) error
+	MarkUsed(ctx context.Context, chainID int64, address string, nonce int64) error
 }
 
 // trackedWithdrawal holds state for a withdrawal being broadcast
@@ -241,6 +243,14 @@ func (b *Broadcaster) broadcastTransaction(ctx context.Context, withdrawal *repo
 		return "", fmt.Errorf("failed to send transaction: %w", err)
 	}
 
+	if err := b.nonceRepo.MarkUsed(ctx, withdrawal.ChainID, withdrawal.FromAddress, int64(nonce)); err != nil {
+		b.logger.Warn("failed to mark nonce allocation used",
+			"withdrawal_id", withdrawal.ID,
+			"nonce", nonce,
+			"error", err,
+		)
+	}
+
 	withdrawal.Nonce = int64(nonce)
 	return txHash, nil
 }
@@ -269,12 +279,9 @@ func (b *Broadcaster) resolveNonce(ctx context.Context, withdrawal *repository.W
 	if err != nil {
 		return 0, fmt.Errorf("failed to get pending nonce: %w", err)
 	}
-	allocatedNonce, err := b.nonceRepo.Allocate(ctx, withdrawal.ChainID, withdrawal.FromAddress)
+	allocatedNonce, err := b.nonceRepo.AllocateAtLeast(ctx, withdrawal.ChainID, withdrawal.FromAddress, chainNonce, withdrawal.ID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to allocate nonce: %w", err)
-	}
-	if uint64(allocatedNonce) < chainNonce {
-		return chainNonce, nil
 	}
 	return uint64(allocatedNonce), nil
 }

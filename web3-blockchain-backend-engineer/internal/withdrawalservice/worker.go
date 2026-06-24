@@ -49,9 +49,16 @@ func NewWithdrawalWorker(
 // Start begins the withdrawal worker loop
 func (w *WithdrawalWorker) Start(ctx context.Context) error {
 	// Subscribe to new withdrawal events
-	sub, err := w.natsClient.Subscribe(SubjectWithdrawalCreated, w.handleWithdrawalCreated)
+	createdSub, err := w.natsClient.Subscribe(SubjectWithdrawalCreated, w.handleWithdrawalCreated)
 	if err != nil {
 		w.logger.Error("Failed to subscribe to withdrawal_created", "error", err)
+		return err
+	}
+
+	approvedSub, err := w.natsClient.Subscribe(SubjectWithdrawalApproved, w.handleWithdrawalApproved)
+	if err != nil {
+		createdSub.Unsubscribe()
+		w.logger.Error("Failed to subscribe to withdrawal_approved", "error", err)
 		return err
 	}
 
@@ -64,7 +71,8 @@ func (w *WithdrawalWorker) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			sub.Unsubscribe()
+			createdSub.Unsubscribe()
+			approvedSub.Unsubscribe()
 			w.logger.Info("Withdrawal worker stopped")
 			return ctx.Err()
 		case <-ticker.C:
@@ -96,6 +104,37 @@ func (w *WithdrawalWorker) handleWithdrawalCreated(msg *nats.Msg) {
 		return
 	}
 
+	msg.Ack()
+}
+
+func (w *WithdrawalWorker) handleWithdrawalApproved(msg *nats.Msg) {
+	var event WithdrawalApprovedEvent
+	if err := json.Unmarshal(msg.Data, &event); err != nil {
+		w.logger.Error("Failed to unmarshal withdrawal approved event", "error", err)
+		return
+	}
+
+	withdrawal, err := w.withdrawalRepo.GetByID(event.WithdrawalID)
+	if err != nil {
+		w.logger.Error("Failed to load approved withdrawal", "withdrawal_id", event.WithdrawalID, "error", err)
+		return
+	}
+
+	if withdrawal.Status != repository.WithdrawalStatusApproved {
+		msg.Ack()
+		return
+	}
+
+	if err := w.withdrawalRepo.UpdateStatus(withdrawal.ID, repository.WithdrawalStatusSigning); err != nil {
+		w.logger.Warn("Failed to update approved withdrawal to signing",
+			"withdrawal_id", withdrawal.ID,
+			"error", err,
+		)
+		return
+	}
+
+	withdrawal.Status = repository.WithdrawalStatusSigning
+	w.publishWithdrawalBroadcast(withdrawal)
 	msg.Ack()
 }
 
@@ -176,23 +215,14 @@ func (w *WithdrawalWorker) performRiskCheck(ctx context.Context, withdrawal *rep
 
 // processApprovedStage moves approved withdrawals to signing/broadcasting
 func (w *WithdrawalWorker) processApprovedStage(ctx context.Context) error {
+	_ = ctx
 	withdrawals, err := w.withdrawalRepo.ListByStatus(repository.WithdrawalStatusApproved, 100)
 	if err != nil {
 		return fmt.Errorf("failed to list approved withdrawals: %w", err)
 	}
 
 	for _, withdrawal := range withdrawals {
-		// Move to signing status - broadcaster will pick this up
-		if err := w.withdrawalRepo.UpdateStatus(withdrawal.ID, repository.WithdrawalStatusSigning); err != nil {
-			w.logger.Warn("Failed to update withdrawal status to signing",
-				"withdrawal_id", withdrawal.ID,
-				"error", err,
-			)
-			continue
-		}
-
-		// Publish to broadcast subject
-		w.publishWithdrawalBroadcast(withdrawal)
+		w.publishWithdrawalApproved(withdrawal)
 	}
 
 	return nil

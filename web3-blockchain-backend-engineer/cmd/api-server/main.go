@@ -47,15 +47,16 @@ func main() {
 	}
 
 	handlers.Configure(handlers.Dependencies{
-		DB:             db,
-		ChainRepo:      repository.NewChainRepository(db),
-		TokenRepo:      repository.NewTokenRepository(db),
-		BalanceRepo:    repository.NewBalanceRepository(db),
-		DepositRepo:    repository.NewDepositRepository(db),
-		WithdrawalRepo: repository.NewWithdrawalRepository(db),
-		CheckpointRepo: repository.NewScanCheckpointRepository(db),
-		NATS:           natsConn,
-		Logger:         logger,
+		DB:              db,
+		ChainRepo:       repository.NewChainRepository(db),
+		TokenRepo:       repository.NewTokenRepository(db),
+		RPCProviderRepo: repository.NewRPCProviderRepository(db),
+		BalanceRepo:     repository.NewBalanceRepository(db),
+		DepositRepo:     repository.NewDepositRepository(db),
+		WithdrawalRepo:  repository.NewWithdrawalRepository(db),
+		CheckpointRepo:  repository.NewScanCheckpointRepository(db),
+		NATS:            natsConn,
+		Logger:          logger,
 	})
 
 	r := gin.Default()

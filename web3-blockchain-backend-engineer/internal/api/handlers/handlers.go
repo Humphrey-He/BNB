@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -8,7 +9,10 @@ import (
 	"strings"
 
 	"github.com/asset-platform/multi-chain-asset-platform/internal/repository"
+	"github.com/asset-platform/multi-chain-asset-platform/internal/rpcgateway"
 	"github.com/asset-platform/multi-chain-asset-platform/internal/withdrawalservice"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 )
 
@@ -381,6 +385,47 @@ func CreateWithdrawal(c *gin.Context) {
 		IdempotencyKey: idempotencyKey,
 	}
 
+	if !common.IsHexAddress(withdrawal.FromAddress) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "X-From-Address must be a valid hex address"})
+		return
+	}
+	if !common.IsHexAddress(withdrawal.ToAddress) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "to_address must be a valid hex address"})
+		return
+	}
+	if strings.EqualFold(withdrawal.FromAddress, withdrawal.ToAddress) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "from and to addresses must differ"})
+		return
+	}
+	if _, err := parsePositiveIntegerString(withdrawal.Amount); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be a positive base-10 integer"})
+		return
+	}
+
+	chain, err := apiDeps.ChainRepo.GetByChainID(withdrawal.ChainID)
+	if err != nil {
+		respondRepositoryError(c, err)
+		return
+	}
+	if !chain.IsActive {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chain is inactive"})
+		return
+	}
+
+	token, err := apiDeps.TokenRepo.GetByID(withdrawal.TokenID)
+	if err != nil {
+		respondRepositoryError(c, err)
+		return
+	}
+	if token.ChainID != chain.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token does not belong to chain_id"})
+		return
+	}
+	if !token.IsActive {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token is inactive"})
+		return
+	}
+
 	if apiDeps.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "withdrawal service is not configured"})
 		return
@@ -534,24 +579,19 @@ func ApproveWithdrawal(c *gin.Context) {
 	}
 
 	if apiDeps.NATS != nil {
-		event := withdrawalservice.WithdrawalBroadcastEvent{
+		event := withdrawalservice.WithdrawalApprovedEvent{
 			WithdrawalID: withdrawal.ID,
 			ChainID:      withdrawal.ChainID,
 			TokenID:      withdrawal.TokenID,
 			FromAddress:  withdrawal.FromAddress,
 			ToAddress:    withdrawal.ToAddress,
 			Amount:       withdrawal.Amount,
-			Nonce:        withdrawal.Nonce,
 		}
 		data, marshalErr := json.Marshal(event)
 		if marshalErr != nil {
 			handlerLogger().Error("failed to marshal approved withdrawal event", "withdrawal_id", withdrawal.ID, "error", marshalErr)
-		} else if publishErr := apiDeps.NATS.Publish(withdrawalservice.SubjectWithdrawalBroadcast, data); publishErr != nil {
+		} else if publishErr := apiDeps.NATS.Publish(withdrawalservice.SubjectWithdrawalApproved, data); publishErr != nil {
 			handlerLogger().Error("failed to publish approved withdrawal event", "withdrawal_id", withdrawal.ID, "error", publishErr)
-		} else if updateErr := apiDeps.WithdrawalRepo.UpdateStatus(withdrawal.ID, repository.WithdrawalStatusSigning); updateErr != nil {
-			handlerLogger().Warn("failed to move approved withdrawal to signing", "withdrawal_id", withdrawal.ID, "error", updateErr)
-		} else {
-			withdrawal.Status = repository.WithdrawalStatusSigning
 		}
 	}
 
@@ -696,6 +736,10 @@ type ChainStatusResponse struct {
 	LatestBlock      int64  `json:"latest_block"`
 	ScanLag          int64  `json:"scan_lag"`
 	IsActive         bool   `json:"is_active"`
+	RPCHealthy       bool   `json:"rpc_healthy"`
+	RPCProvider      string `json:"rpc_provider,omitempty"`
+	RPCError         string `json:"rpc_error,omitempty"`
+	ProviderCount    int    `json:"provider_count"`
 }
 
 // GetChainStatus godoc
@@ -723,13 +767,61 @@ func GetChainStatus(c *gin.Context) {
 			handlerLogger().Warn("failed to load checkpoint", "chain_id", chain.ID, "error", cpErr)
 		}
 
+		latestBlock := lastScannedBlock
+		rpcHealthy := false
+		rpcProvider := ""
+		rpcError := ""
+		providerCount := 0
+		if apiDeps.RPCProviderRepo != nil {
+			client, rpcErr := rpcgateway.NewResilientClient(chain.ID, apiDeps.RPCProviderRepo, rpcgateway.DefaultCallOptions())
+			if rpcErr != nil {
+				rpcError = rpcErr.Error()
+				handlerLogger().Warn("failed to build rpc client for chain status", "chain_id", chain.ID, "error", rpcErr)
+			} else {
+				snapshots := client.InspectProviders()
+				providerCount = len(snapshots)
+				for _, snapshot := range snapshots {
+					if snapshot.IsActive && snapshot.CircuitState != "open" {
+						rpcProvider = snapshot.ProviderName
+						break
+					}
+				}
+
+				var head uint64
+				callErr := client.Call(c.Request.Context(), func(callCtx context.Context, ethClient *ethclient.Client) error {
+					n, err := ethClient.BlockNumber(callCtx)
+					if err != nil {
+						return err
+					}
+					head = n
+					return nil
+				})
+				if callErr != nil {
+					rpcError = callErr.Error()
+					handlerLogger().Warn("failed to fetch latest block for chain status", "chain_id", chain.ID, "error", callErr)
+				} else {
+					latestBlock = int64(head)
+					rpcHealthy = true
+				}
+			}
+		}
+
+		scanLag := latestBlock - lastScannedBlock
+		if scanLag < 0 {
+			scanLag = 0
+		}
+
 		resp = append(resp, ChainStatusResponse{
 			ChainID:          chain.ChainID,
 			Name:             chain.Name,
 			LastScannedBlock: lastScannedBlock,
-			LatestBlock:      lastScannedBlock,
-			ScanLag:          0,
+			LatestBlock:      latestBlock,
+			ScanLag:          scanLag,
 			IsActive:         chain.IsActive,
+			RPCHealthy:       rpcHealthy,
+			RPCProvider:      rpcProvider,
+			RPCError:         rpcError,
+			ProviderCount:    providerCount,
 		})
 	}
 

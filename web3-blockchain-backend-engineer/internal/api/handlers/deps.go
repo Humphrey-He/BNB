@@ -10,15 +10,16 @@ import (
 
 // Dependencies contains the repositories and infrastructure used by HTTP handlers.
 type Dependencies struct {
-	DB             *sql.DB
-	ChainRepo      repository.ChainRepository
-	TokenRepo      repository.TokenRepository
-	BalanceRepo    repository.BalanceRepository
-	DepositRepo    repository.DepositRepository
-	WithdrawalRepo repository.WithdrawalRepository
-	CheckpointRepo repository.ScanCheckpointRepository
-	NATS           *nats.Conn
-	Logger         *slog.Logger
+	DB              *sql.DB
+	ChainRepo       repository.ChainRepository
+	TokenRepo       repository.TokenRepository
+	RPCProviderRepo repository.RPCProviderRepository
+	BalanceRepo     repository.BalanceRepository
+	DepositRepo     repository.DepositRepository
+	WithdrawalRepo  repository.WithdrawalRepository
+	CheckpointRepo  repository.ScanCheckpointRepository
+	NATS            *nats.Conn
+	Logger          *slog.Logger
 }
 
 var apiDeps Dependencies

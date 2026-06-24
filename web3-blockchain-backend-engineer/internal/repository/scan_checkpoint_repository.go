@@ -17,6 +17,7 @@ type ScanCheckpoint struct {
 type ScanCheckpointRepository interface {
 	Create(checkpoint *ScanCheckpoint) error
 	GetByChainID(chainID int64) (*ScanCheckpoint, error)
+	List() ([]*ScanCheckpoint, error)
 	UpdateLastScannedBlock(chainID int64, blockNumber int64) error
 	Delete(id int64) error
 }
@@ -62,6 +63,34 @@ func (r *scanCheckpointRepository) GetByChainID(chainID int64) (*ScanCheckpoint,
 		return nil, err
 	}
 	return checkpoint, nil
+}
+
+func (r *scanCheckpointRepository) List() ([]*ScanCheckpoint, error) {
+	query := `
+		SELECT id, chain_id, last_scanned_block, last_scanned_at
+		FROM scan_checkpoints
+		ORDER BY chain_id
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var checkpoints []*ScanCheckpoint
+	for rows.Next() {
+		checkpoint := &ScanCheckpoint{}
+		if err := rows.Scan(
+			&checkpoint.ID,
+			&checkpoint.ChainID,
+			&checkpoint.LastScannedBlock,
+			&checkpoint.LastScannedAt,
+		); err != nil {
+			return nil, err
+		}
+		checkpoints = append(checkpoints, checkpoint)
+	}
+	return checkpoints, rows.Err()
 }
 
 func (r *scanCheckpointRepository) UpdateLastScannedBlock(chainID int64, blockNumber int64) error {

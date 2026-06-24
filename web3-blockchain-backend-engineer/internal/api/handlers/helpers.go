@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -54,4 +55,19 @@ func formatTime(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+func parsePositiveIntegerString(raw string) (*big.Int, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, errors.New("value is required")
+	}
+	n, ok := new(big.Int).SetString(value, 10)
+	if !ok {
+		return nil, errors.New("value must be a base-10 integer")
+	}
+	if n.Sign() <= 0 {
+		return nil, errors.New("value must be positive")
+	}
+	return n, nil
 }
