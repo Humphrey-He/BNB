@@ -24,7 +24,7 @@ export function WalletActivity({ transactions }: WalletActivityProps) {
   }
 
   const txTypeLabel = (type: WalletTransactionType['type']) => {
-    return t(`wallet.activity.type.${type}`)
+    return t(`app.wallet.activity.type.${type}`)
   }
 
   const txStatusIcon = (status: WalletTransactionType['status']) => {
@@ -41,8 +41,8 @@ export function WalletActivity({ transactions }: WalletActivityProps) {
   return (
     <section className="wallet-activity panel">
       <div className="wallet-activity-header">
-        <h3 className="wallet-activity-title">{t('wallet.activity.title')}</h3>
-        <span className="wallet-activity-subtitle">{t('wallet.activity.subtitle')}</span>
+        <h3 className="wallet-activity-title">{t('app.wallet.activity.title')}</h3>
+        <span className="wallet-activity-subtitle">{t('app.wallet.activity.subtitle')}</span>
       </div>
 
       <div className="wallet-tx-list">
@@ -60,11 +60,11 @@ export function WalletActivity({ transactions }: WalletActivityProps) {
 
             <div className="wallet-tx-addresses">
               <div className="wallet-tx-address">
-                <span className="wallet-tx-address-label">{t('wallet.activity.from')}</span>
+                <span className="wallet-tx-address-label">{t('app.wallet.activity.from')}</span>
                 <CopyableHash hash={tx.from} truncate />
               </div>
               <div className="wallet-tx-address">
-                <span className="wallet-tx-address-label">{t('wallet.activity.to')}</span>
+                <span className="wallet-tx-address-label">{t('app.wallet.activity.to')}</span>
                 <CopyableHash hash={tx.to} truncate />
               </div>
             </div>
@@ -72,13 +72,13 @@ export function WalletActivity({ transactions }: WalletActivityProps) {
             <div className="wallet-tx-meta">
               <div className="wallet-tx-status">
                 {txStatusIcon(tx.status)}
-                <span className={`wallet-tx-status-text ${tx.status}`}>{t(`wallet.activity.status.${tx.status}`)}</span>
+                <span className={`wallet-tx-status-text ${tx.status}`}>{t(`app.wallet.activity.status.${tx.status}`)}</span>
               </div>
               <span className="wallet-tx-time">{tx.timestamp}</span>
             </div>
 
             <div className="wallet-tx-hash">
-              <span className="wallet-tx-hash-label">{t('wallet.activity.txHash')}</span>
+              <span className="wallet-tx-hash-label">{t('app.wallet.activity.txHash')}</span>
               <CopyableHash hash={tx.txHash} />
             </div>
           </div>

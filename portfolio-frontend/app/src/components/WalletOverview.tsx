@@ -17,9 +17,9 @@ export function WalletOverview({ account }: WalletOverviewProps) {
   }
 
   const walletTypeLabel = () => {
-    if (account.type === 'EOA') return t('wallet.type.eoa')
-    if (account.type === 'Contract') return t('wallet.type.contract')
-    return t('wallet.type.hardware')
+    if (account.type === 'EOA') return t('app.wallet.type.eoa')
+    if (account.type === 'Contract') return t('app.wallet.type.contract')
+    return t('app.wallet.type.hardware')
   }
 
   return (
@@ -29,19 +29,19 @@ export function WalletOverview({ account }: WalletOverviewProps) {
           {account.isConnected ? (
             <>
               <Wifi aria-hidden="true" className="wallet-status-icon connected" />
-              <span className="wallet-status-text connected">{t('wallet.connected')}</span>
+              <span className="wallet-status-text connected">{t('app.wallet.connected')}</span>
             </>
           ) : (
             <>
               <WifiOff aria-hidden="true" className="wallet-status-icon disconnected" />
-              <span className="wallet-status-text disconnected">{t('wallet.disconnected')}</span>
+              <span className="wallet-status-text disconnected">{t('app.wallet.disconnected')}</span>
             </>
           )}
         </div>
       </div>
 
       <div className="wallet-address-section">
-        <span className="wallet-address-label">{t('wallet.address')}</span>
+        <span className="wallet-address-label">{t('app.wallet.address')}</span>
         <div className="wallet-address-row">
           <CopyableHash hash={account.address} />
         </div>
@@ -49,11 +49,11 @@ export function WalletOverview({ account }: WalletOverviewProps) {
 
       <div className="wallet-meta-row">
         <div className="wallet-meta-item">
-          <span className="wallet-meta-label">{t('wallet.network')}</span>
+          <span className="wallet-meta-label">{t('app.wallet.network')}</span>
           <strong className="wallet-meta-value">{account.network}</strong>
         </div>
         <div className="wallet-meta-item">
-          <span className="wallet-meta-label">{t('wallet.type.label')}</span>
+          <span className="wallet-meta-label">{t('app.wallet.type.label')}</span>
           <div className="wallet-type-row">
             {walletTypeIcon()}
             <strong className="wallet-meta-value">{walletTypeLabel()}</strong>
@@ -61,13 +61,13 @@ export function WalletOverview({ account }: WalletOverviewProps) {
         </div>
         {account.label && (
           <div className="wallet-meta-item">
-            <span className="wallet-meta-label">{t('wallet.label')}</span>
+            <span className="wallet-meta-label">{t('app.wallet.label')}</span>
             <strong className="wallet-meta-value">{account.label}</strong>
           </div>
         )}
       </div>
 
-      <p className="wallet-disclaimer">{t('wallet.readonlyDisclaimer')}</p>
+      <p className="wallet-disclaimer">{t('app.wallet.readonlyDisclaimer')}</p>
     </article>
   )
 }

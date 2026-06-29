@@ -32,7 +32,7 @@ export function Topbar({ wallet, onWalletToggle }: TopbarProps) {
         </div>
         <button className={wallet ? 'wallet connected' : 'wallet'} onClick={onWalletToggle}>
           <AppIcon name={wallet ? 'check' : 'wallet'} />
-          {wallet ? t('app.wallet.connected') : t('app.wallet.readonly')}
+          {wallet ? t('app.wallet.connected') : t('app.wallet.disconnected')}
         </button>
       </div>
     </header>
