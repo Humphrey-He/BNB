@@ -44,6 +44,7 @@ type Broadcaster struct {
 	db             *sql.DB
 	natsClient     *nats.Conn
 	withdrawalRepo repository.WithdrawalRepository
+	chainRepo      repository.ChainRepository
 	tokenRepo      repository.TokenRepository
 	nonceRepo      NonceRepository
 	rpcClient      RPCClient
@@ -76,6 +77,7 @@ func NewBroadcaster(
 	db *sql.DB,
 	natsClient *nats.Conn,
 	withdrawalRepo repository.WithdrawalRepository,
+	chainRepo repository.ChainRepository,
 	tokenRepo repository.TokenRepository,
 	nonceRepo NonceRepository,
 	rpcClient RPCClient,
@@ -86,6 +88,7 @@ func NewBroadcaster(
 		db:             db,
 		natsClient:     natsClient,
 		withdrawalRepo: withdrawalRepo,
+		chainRepo:      chainRepo,
 		tokenRepo:      tokenRepo,
 		nonceRepo:      nonceRepo,
 		rpcClient:      rpcClient,
@@ -201,6 +204,11 @@ func (b *Broadcaster) broadcastTransaction(ctx context.Context, withdrawal *repo
 		return "", fmt.Errorf("invalid withdrawal destination address: %s", withdrawal.ToAddress)
 	}
 
+	chain, err := b.resolveChain(withdrawal)
+	if err != nil {
+		return "", err
+	}
+
 	token, err := b.resolveToken(withdrawal)
 	if err != nil {
 		return "", err
@@ -221,7 +229,7 @@ func (b *Broadcaster) broadcastTransaction(ctx context.Context, withdrawal *repo
 		return "", fmt.Errorf("invalid withdrawal amount: %s", withdrawal.Amount)
 	}
 
-	req, err := b.buildSignRequest(ctx, withdrawal, token, nonce, amount, gasPrice)
+	req, err := b.buildSignRequest(ctx, withdrawal, chain, token, nonce, amount, gasPrice)
 	if err != nil {
 		return "", err
 	}
@@ -253,6 +261,18 @@ func (b *Broadcaster) broadcastTransaction(ctx context.Context, withdrawal *repo
 
 	withdrawal.Nonce = int64(nonce)
 	return txHash, nil
+}
+
+func (b *Broadcaster) resolveChain(withdrawal *repository.Withdrawal) (*repository.Chain, error) {
+	if b.chainRepo == nil {
+		return nil, fmt.Errorf("chain repository is not configured")
+	}
+
+	chain, err := b.chainRepo.GetByID(withdrawal.ChainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chain metadata for withdrawal %d: %w", withdrawal.ID, err)
+	}
+	return chain, nil
 }
 
 func (b *Broadcaster) resolveToken(withdrawal *repository.Withdrawal) (*repository.Token, error) {
@@ -289,6 +309,7 @@ func (b *Broadcaster) resolveNonce(ctx context.Context, withdrawal *repository.W
 func (b *Broadcaster) buildSignRequest(
 	ctx context.Context,
 	withdrawal *repository.Withdrawal,
+	chain *repository.Chain,
 	token *repository.Token,
 	nonce uint64,
 	amount *big.Int,
@@ -298,12 +319,13 @@ func (b *Broadcaster) buildSignRequest(
 	toAddress := common.HexToAddress(withdrawal.ToAddress)
 
 	req := &SignRequest{
-		ChainID:  withdrawal.ChainID,
-		Nonce:    nonce,
-		To:       toAddress,
-		Value:    amount,
-		GasPrice: gasPrice,
-		Token:    token,
+		NetworkChainID: chain.ChainID,
+		RPCChainID:     withdrawal.ChainID,
+		Nonce:          nonce,
+		To:             toAddress,
+		Value:          amount,
+		GasPrice:       gasPrice,
+		Token:          token,
 	}
 
 	gasLimit, err := b.estimateGasLimit(ctx, fromAddress, req)
@@ -317,7 +339,7 @@ func (b *Broadcaster) buildSignRequest(
 
 func (b *Broadcaster) estimateGasLimit(ctx context.Context, from common.Address, req *SignRequest) (uint64, error) {
 	callReq := &EstimateGasRequest{
-		ChainID:  req.ChainID,
+		ChainID:  req.RPCChainID,
 		From:     from,
 		Value:    big.NewInt(0).Set(req.Value),
 		GasPrice: req.GasPrice,
@@ -378,6 +400,7 @@ func NewBroadcasterFromEnv(
 		db,
 		natsClient,
 		withdrawalRepo,
+		chainRepo,
 		tokenRepo,
 		nonceRepo,
 		rpcClient,

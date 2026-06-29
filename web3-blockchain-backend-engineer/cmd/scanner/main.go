@@ -60,6 +60,7 @@ func main() {
 		rpcClient,
 		repository.NewScanCheckpointRepository(db),
 		repository.NewBlockRepository(db),
+		repository.NewWatchedAddressRepository(db),
 		nc,
 		logger,
 		scanner.NewMetrics("asset_platform"),

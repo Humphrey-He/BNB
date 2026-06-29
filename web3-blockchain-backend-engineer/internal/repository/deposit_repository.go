@@ -240,13 +240,13 @@ func (r *depositRepository) ConfirmWithCondition(id int64, confirmations, target
 	query := `
 		UPDATE deposits
 		SET status = $2,
-		    confirmations = $3,
+		    confirmations = $3::integer,
 		    processed_at = $4,
 		    confirmed_event_published = false,
 		    updated_at = $4
 		WHERE id = $1
 		  AND status = $5
-		  AND $3 >= $6
+		  AND $3::integer >= $6::integer
 	`
 	now := time.Now()
 	result, err := r.db.Exec(query,

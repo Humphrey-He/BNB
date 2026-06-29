@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
@@ -53,6 +54,9 @@ func (p *persistence) GetCheckpoint(ctx context.Context) (*repository.ScanCheckp
 func (p *persistence) EnsureCheckpoint(ctx context.Context) (*repository.ScanCheckpoint, error) {
 	checkpoint, err := p.checkpointRepo.GetByChainID(p.chainID)
 	if err != nil {
+		if err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to load checkpoint for chain %d: %w", p.chainID, err)
+		}
 		// Create new checkpoint starting from block 0
 		checkpoint = &repository.ScanCheckpoint{
 			ChainID:          p.chainID,
@@ -80,13 +84,13 @@ func (p *persistence) UpdateCheckpoint(ctx context.Context, blockNumber int64) e
 // SaveBlock saves block information for reorg detection
 func (p *persistence) SaveBlock(ctx context.Context, block *Block) error {
 	dbBlock := &repository.Block{
-		ChainID:       p.chainID,
-		BlockNumber:   int64(block.Number),
-		BlockHash:     block.Hash.Hex(),
-		ParentHash:    block.ParentHash.Hex(),
-		BlockTime:     time.Unix(int64(block.Time), 0),
-		IsOrphaned:    false,
-		ScannedAt:     time.Now(),
+		ChainID:     p.chainID,
+		BlockNumber: int64(block.Number),
+		BlockHash:   block.Hash.Hex(),
+		ParentHash:  block.ParentHash.Hex(),
+		BlockTime:   time.Unix(int64(block.Time), 0),
+		IsOrphaned:  false,
+		ScannedAt:   time.Now(),
 	}
 
 	err := p.blockRepo.Create(dbBlock)

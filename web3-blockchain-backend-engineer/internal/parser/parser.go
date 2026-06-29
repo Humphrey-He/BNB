@@ -21,14 +21,18 @@ var ERC20TransferTopic = TransferEventSignature
 
 // RawEventMessage represents the raw event message from NATS (must match scanner's definition)
 type RawEventMessage struct {
-	ChainID        int64    `json:"chain_id"`
-	BlockNumber    uint64   `json:"block_number"`
-	BlockHash      string   `json:"block_hash"`
-	TxHash         string   `json:"tx_hash"`
-	LogIndex       uint     `json:"log_index"`
+	ChainID         int64    `json:"chain_id"`
+	BlockNumber     uint64   `json:"block_number"`
+	BlockHash       string   `json:"block_hash"`
+	TxHash          string   `json:"tx_hash"`
+	LogIndex        uint     `json:"log_index"`
 	ContractAddress string   `json:"contract_address"`
-	Topics         []string `json:"topics"`
-	Data           string   `json:"data"`
+	Topics          []string `json:"topics"`
+	Data            string   `json:"data"`
+	EventName       string   `json:"event_name,omitempty"`
+	FromAddress     string   `json:"from_address,omitempty"`
+	ToAddress       string   `json:"to_address,omitempty"`
+	Value           string   `json:"value,omitempty"`
 }
 
 // ParsedEvent represents a parsed event after decoding
@@ -181,7 +185,15 @@ func (p *Parser) decodeEvent(event *RawEventMessage) (*ParsedEvent, error) {
 		LogIndex:     event.LogIndex,
 		BlockNumber:  int64(event.BlockNumber),
 		BlockHash:    event.BlockHash,
-		EventName:   "Unknown",
+		EventName:    "Unknown",
+	}
+
+	if event.EventName == "NativeTransfer" {
+		parsed.From = event.FromAddress
+		parsed.To = event.ToAddress
+		parsed.Amount = event.Value
+		parsed.EventName = "NativeTransfer"
+		return parsed, nil
 	}
 
 	// Check if this is an ERC-20 Transfer event (topic0 matches)
@@ -202,16 +214,16 @@ func (p *Parser) decodeEvent(event *RawEventMessage) (*ParsedEvent, error) {
 // saveChainEvent saves the parsed event to the chain_events table
 func (p *Parser) saveChainEvent(parsed *ParsedEvent) error {
 	event := &repository.ChainEvent{
-		ChainID:        parsed.ChainID,
-		TxHash:         parsed.TxHash,
-		LogIndex:       int(parsed.LogIndex),
-		BlockNumber:    parsed.BlockNumber,
-		BlockHash:      parsed.BlockHash,
+		ChainID:         parsed.ChainID,
+		TxHash:          parsed.TxHash,
+		LogIndex:        int(parsed.LogIndex),
+		BlockNumber:     parsed.BlockNumber,
+		BlockHash:       parsed.BlockHash,
 		ContractAddress: parsed.TokenAddress,
-		EventName:     parsed.EventName,
-		FromAddress:   parsed.From,
-		ToAddress:     parsed.To,
-		Amount:        parsed.Amount,
+		EventName:       parsed.EventName,
+		FromAddress:     parsed.From,
+		ToAddress:       parsed.To,
+		Amount:          parsed.Amount,
 	}
 
 	return p.chainEventRepo.Create(event)

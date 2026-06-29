@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/asset-platform/multi-chain-asset-platform/internal/repository"
 	"github.com/asset-platform/multi-chain-asset-platform/internal/rpcgateway"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // ResilientHealth exposes provider health to scanner callers.
@@ -26,7 +28,10 @@ type resilientClient struct {
 
 // NewResilientClientFromRepo creates a multi-provider scanner RPC client backed by rpc_providers.
 func NewResilientClientFromRepo(chainID int64, repo repository.RPCProviderRepository) (Client, error) {
-	rc, err := rpcgateway.NewResilientClient(chainID, repo, rpcgateway.DefaultCallOptions())
+	opts := rpcgateway.DefaultCallOptions()
+	opts.Timeout = 120 * time.Second
+
+	rc, err := rpcgateway.NewResilientClient(chainID, repo, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -49,16 +54,17 @@ func (c *resilientClient) BlockNumber(ctx context.Context) (uint64, error) {
 func (c *resilientClient) GetBlockByNumber(ctx context.Context, blockNumber uint64) (*Block, error) {
 	var result *Block
 	err := c.rpc.Call(ctx, func(callCtx context.Context, client *ethclient.Client) error {
-		block, err := client.BlockByNumber(callCtx, big.NewInt(int64(blockNumber)))
+		var raw blockRaw
+		err := client.Client().CallContext(callCtx, &raw, "eth_getBlockByNumber", toHexUint64(blockNumber), false)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get block %d: %w", blockNumber, err)
 		}
-		header := block.Header()
 		result = &Block{
-			Number:     header.Number.Uint64(),
-			Hash:       header.Hash(),
-			ParentHash: header.ParentHash,
-			Time:       header.Time,
+			Number:            uint64(raw.Number),
+			Hash:              raw.Hash,
+			ParentHash:        raw.ParentHash,
+			Time:              uint64(raw.Timestamp),
+			TransactionHashes: raw.TransactionHashes,
 		}
 		return nil
 	})
@@ -66,6 +72,65 @@ func (c *resilientClient) GetBlockByNumber(ctx context.Context, blockNumber uint
 		return nil, err
 	}
 	return result, nil
+}
+
+func (c *resilientClient) GetTransactionsByHashes(ctx context.Context, hashes []common.Hash) ([]Transaction, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+
+	transactions := make([]Transaction, 0, len(hashes))
+	for start := 0; start < len(hashes); start += 100 {
+		end := start + 100
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+
+		chunk, err := c.getTransactionsByHashesChunk(ctx, hashes[start:end])
+		if err != nil {
+			return nil, err
+		}
+		transactions = append(transactions, chunk...)
+	}
+
+	return transactions, nil
+}
+
+func (c *resilientClient) getTransactionsByHashesChunk(ctx context.Context, hashes []common.Hash) ([]Transaction, error) {
+	var transactions []Transaction
+	err := c.rpc.Call(ctx, func(callCtx context.Context, client *ethclient.Client) error {
+		results := make([]*transactionRaw, len(hashes))
+		batch := make([]rpc.BatchElem, len(hashes))
+		for i, hash := range hashes {
+			batch[i] = rpc.BatchElem{
+				Method: "eth_getTransactionByHash",
+				Args:   []interface{}{hash},
+				Result: &results[i],
+			}
+		}
+
+		if err := client.Client().BatchCallContext(callCtx, batch); err != nil {
+			return fmt.Errorf("failed to batch fetch transactions: %w", err)
+		}
+
+		transactions = make([]Transaction, 0, len(results))
+		for i := range batch {
+			if batch[i].Error != nil {
+				return fmt.Errorf("failed to fetch transaction %s: %w", hashes[i].Hex(), batch[i].Error)
+			}
+			if results[i] == nil {
+				continue
+			}
+			transactions = append(transactions, results[i].toTransaction())
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return transactions, nil
 }
 
 func (c *resilientClient) GetLogsBatched(ctx context.Context, filter LogsFilter, batchSize uint64) ([]Log, error) {

@@ -75,7 +75,7 @@ func (r *withdrawalRepository) Create(withdrawal *Withdrawal) error {
 		txHash = sql.NullString{String: withdrawal.TxHash, Valid: true}
 	}
 	var nonce sql.NullInt64
-	if withdrawal.Nonce > 0 {
+	if withdrawal.Nonce > 0 || withdrawal.TxHash != "" {
 		nonce = sql.NullInt64{Int64: withdrawal.Nonce, Valid: true}
 	}
 	var failureReason sql.NullString
@@ -225,7 +225,7 @@ func (r *withdrawalRepository) Update(w *Withdrawal) error {
 		txHash = sql.NullString{String: w.TxHash, Valid: true}
 	}
 	var nonce sql.NullInt64
-	if w.Nonce > 0 {
+	if w.Nonce > 0 || w.TxHash != "" {
 		nonce = sql.NullInt64{Int64: w.Nonce, Valid: true}
 	}
 	var failureReason sql.NullString

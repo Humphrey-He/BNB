@@ -104,8 +104,8 @@ func (w *ConfirmWorker) handleParsedEvent(msg *nats.Msg) {
 		return
 	}
 
-	// Only process Transfer events (deposits)
-	if event.EventName != "Transfer" {
+	// Only process deposit-bearing events.
+	if event.EventName != "Transfer" && event.EventName != "NativeTransfer" {
 		return
 	}
 

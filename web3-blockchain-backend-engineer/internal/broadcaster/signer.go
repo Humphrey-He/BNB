@@ -22,7 +22,8 @@ type Signer interface {
 }
 
 type SignRequest struct {
-	ChainID              int64
+	NetworkChainID       int64
+	RPCChainID           int64
 	Nonce                uint64
 	To                   common.Address
 	Value                *big.Int
@@ -83,7 +84,7 @@ func (s *LocalHexKeySigner) SignWithdrawal(ctx context.Context, req *SignRequest
 		return nil, fmt.Errorf("gas price or eip1559 fees are required")
 	}
 
-	chainID := big.NewInt(req.ChainID)
+	chainID := big.NewInt(req.NetworkChainID)
 	tx, err := s.buildTransaction(req)
 	if err != nil {
 		return nil, err
@@ -118,7 +119,7 @@ func (s *LocalHexKeySigner) buildTransaction(req *SignRequest) (*types.Transacti
 
 	if req.MaxFeePerGas != nil && req.MaxPriorityFeePerGas != nil {
 		return types.NewTx(&types.DynamicFeeTx{
-			ChainID:   big.NewInt(req.ChainID),
+			ChainID:   big.NewInt(req.NetworkChainID),
 			Nonce:     req.Nonce,
 			To:        ptrAddress(common.HexToAddress(req.Token.ContractAddress)),
 			Value:     big.NewInt(0),
@@ -142,7 +143,7 @@ func (s *LocalHexKeySigner) buildTransaction(req *SignRequest) (*types.Transacti
 func (s *LocalHexKeySigner) buildNativeTransfer(req *SignRequest) *types.Transaction {
 	if req.MaxFeePerGas != nil && req.MaxPriorityFeePerGas != nil {
 		return types.NewTx(&types.DynamicFeeTx{
-			ChainID:   big.NewInt(req.ChainID),
+			ChainID:   big.NewInt(req.NetworkChainID),
 			Nonce:     req.Nonce,
 			To:        ptrAddress(req.To),
 			Value:     req.Value,

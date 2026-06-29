@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -14,30 +15,39 @@ var ERC20TransferTopic = common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952
 
 // LogsFilter defines the filter criteria for fetching logs
 type LogsFilter struct {
-	Address   common.Address   // Contract address to filter
-	Topics    []common.Hash    // List of topic filters
-	FromBlock *big.Int         // Start block (nil = earliest)
-	ToBlock   *big.Int         // End block (nil = latest)
+	Address   common.Address // Contract address to filter
+	Topics    []common.Hash  // List of topic filters
+	FromBlock *big.Int       // Start block (nil = earliest)
+	ToBlock   *big.Int       // End block (nil = latest)
 }
 
 // Block represents basic block information
 type Block struct {
-	Number     uint64         `json:"number"`
-	Hash       common.Hash    `json:"hash"`
-	ParentHash common.Hash    `json:"parentHash"`
-	Time       uint64         `json:"timestamp"`
+	Number            uint64        `json:"number"`
+	Hash              common.Hash   `json:"hash"`
+	ParentHash        common.Hash   `json:"parentHash"`
+	Time              uint64        `json:"timestamp"`
+	TransactionHashes []common.Hash `json:"transactions"`
+}
+
+// Transaction represents a native ETH transfer candidate within a block.
+type Transaction struct {
+	Hash  common.Hash     `json:"hash"`
+	From  common.Address  `json:"from"`
+	To    *common.Address `json:"to"`
+	Value *big.Int        `json:"value"`
 }
 
 // Log represents a contract log event
 type Log struct {
 	Address     common.Address `json:"address"`
 	Topics      []common.Hash  `json:"topics"`
-	Data        []byte        `json:"data"`
-	BlockNumber uint64        `json:"blockNumber"`
-	TxHash      common.Hash   `json:"transactionHash"`
-	LogIndex    uint          `json:"logIndex"`
-	BlockHash   common.Hash   `json:"blockHash"`
-	Removed     bool          `json:"removed"`
+	Data        []byte         `json:"data"`
+	BlockNumber uint64         `json:"blockNumber"`
+	TxHash      common.Hash    `json:"transactionHash"`
+	LogIndex    uint           `json:"logIndex"`
+	BlockHash   common.Hash    `json:"blockHash"`
+	Removed     bool           `json:"removed"`
 }
 
 // Client defines the interface for RPC client operations
@@ -45,6 +55,7 @@ type Client interface {
 	BlockNumber(ctx context.Context) (uint64, error)
 	GetLogsBatched(ctx context.Context, filter LogsFilter, batchSize uint64) ([]Log, error)
 	GetBlockByNumber(ctx context.Context, blockNumber uint64) (*Block, error)
+	GetTransactionsByHashes(ctx context.Context, hashes []common.Hash) ([]Transaction, error)
 }
 
 // rpcClient implements Client using go-ethereum's rpc client
@@ -171,19 +182,92 @@ func (c *rpcClient) GetBlockByNumber(ctx context.Context, blockNumber uint64) (*
 	}
 
 	return &Block{
-		Number:     uint64(raw.Number),
-		Hash:       raw.Hash,
-		ParentHash: raw.ParentHash,
-		Time:       uint64(raw.Timestamp),
+		Number:            uint64(raw.Number),
+		Hash:              raw.Hash,
+		ParentHash:        raw.ParentHash,
+		Time:              uint64(raw.Timestamp),
+		TransactionHashes: raw.TransactionHashes,
 	}, nil
+}
+
+func (c *rpcClient) GetTransactionsByHashes(ctx context.Context, hashes []common.Hash) ([]Transaction, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+
+	transactions := make([]Transaction, 0, len(hashes))
+	for start := 0; start < len(hashes); start += 100 {
+		end := start + 100
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+
+		chunk, err := c.getTransactionsByHashesChunk(ctx, hashes[start:end])
+		if err != nil {
+			return nil, err
+		}
+		transactions = append(transactions, chunk...)
+	}
+
+	return transactions, nil
+}
+
+func (c *rpcClient) getTransactionsByHashesChunk(ctx context.Context, hashes []common.Hash) ([]Transaction, error) {
+	results := make([]*transactionRaw, len(hashes))
+	batch := make([]rpc.BatchElem, len(hashes))
+	for i, hash := range hashes {
+		batch[i] = rpc.BatchElem{
+			Method: "eth_getTransactionByHash",
+			Args:   []interface{}{hash},
+			Result: &results[i],
+		}
+	}
+
+	if err := c.client.BatchCallContext(ctx, batch); err != nil {
+		return nil, fmt.Errorf("failed to batch fetch transactions: %w", err)
+	}
+
+	transactions := make([]Transaction, 0, len(results))
+	for i := range batch {
+		if batch[i].Error != nil {
+			return nil, fmt.Errorf("failed to fetch transaction %s: %w", hashes[i].Hex(), batch[i].Error)
+		}
+		if results[i] == nil {
+			continue
+		}
+		transactions = append(transactions, results[i].toTransaction())
+	}
+
+	return transactions, nil
 }
 
 // eth_getBlockByNumber returns a block with number as hex string
 type blockRaw struct {
-	Number     hexUint64     `json:"number"`
-	Hash       common.Hash   `json:"hash"`
-	ParentHash common.Hash   `json:"parentHash"`
-	Timestamp  hexUint64     `json:"timestamp"`
+	Number            hexUint64     `json:"number"`
+	Hash              common.Hash   `json:"hash"`
+	ParentHash        common.Hash   `json:"parentHash"`
+	Timestamp         hexUint64     `json:"timestamp"`
+	TransactionHashes []common.Hash `json:"transactions"`
+}
+
+type transactionRaw struct {
+	Hash  common.Hash     `json:"hash"`
+	From  common.Address  `json:"from"`
+	To    *common.Address `json:"to"`
+	Value *hexutil.Big    `json:"value"`
+}
+
+func (t *transactionRaw) toTransaction() Transaction {
+	value := big.NewInt(0)
+	if t.Value != nil {
+		value = (*big.Int)(t.Value)
+	}
+	return Transaction{
+		Hash:  t.Hash,
+		From:  t.From,
+		To:    t.To,
+		Value: new(big.Int).Set(value),
+	}
 }
 
 type hexUint64 uint64
